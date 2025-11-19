@@ -1,0 +1,3 @@
+[submodule "src/scloop/utils/discrete-frechet-distance"]
+	path = src/scloop/utils/discrete-frechet-distance
+	url = https://github.com/stanfish06/discrete-frechet-distance.git

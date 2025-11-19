@@ -1,0 +1,53 @@
+[project]
+name = "scloop"
+version = "0.1.0"
+description = "single-cell loop analysis"
+readme = "README.md"
+authors = [
+    { name = "Stan", email = "zyyu@umich.edu" }
+]
+requires-python = ">=3.12"
+dependencies = [
+  "numpy<2.0.0",
+  "pandas",
+  "scanpy[leiden]>=1.11.2",
+  "torch",
+  "torchvision",
+  "cython>=3.0.12",
+  "pydantic>=2.11.4",
+  "statsmodels==0.14.4",
+  "scikit-sparse>=0.4.16 ; sys_platform == 'linux'",
+  "umap-learn>=0.5.7",
+  "pytest>=8.4.0",
+  "pip>=25.2",
+  "rich>=14.0.0",
+  "torchdyn>=1.0.6",
+  "tensorflow>=2.18.1",
+  "pyrefly>=0.36.2",
+]
+# tensorflow hasn't supported 3.13 yet
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu128", marker = "sys_platform == 'linux'" },
+]
+
+torchvision = [
+  { index = "pytorch-cu128", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[build-system]
+requires = ["setuptools>74.1", "Cython"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.setuptools]
+package-dir = { "" = "src" }

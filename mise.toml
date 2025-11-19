@@ -1,0 +1,20 @@
+[tools]
+uv = "latest"
+
+[settings]
+python.uv_venv_auto = true
+
+[tasks.sync]
+run = [
+    "uv sync",
+    "uv build"
+]
+
+[tasks.info]
+run = [
+    "uv --version",
+    "python --version"
+]
+
+[tasks.kernel]
+run = "uv run ipython kernel install --name 'scLoop' --user"
