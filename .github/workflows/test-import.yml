@@ -1,0 +1,25 @@
+name: Test Import
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-import:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+    - name: Create venv and test import
+      run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
+        uv venv
+        source .venv/bin/activate
+        uv pip install -e .
+        python -c "import scloop; print('✓ Import successful')"
