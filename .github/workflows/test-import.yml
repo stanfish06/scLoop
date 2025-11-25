@@ -19,6 +19,6 @@ jobs:
     - name: Create venv and test import
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
-		make sync
+        make sync
         source .venv/bin/activate
         uv run python -c "import scloop; print('✓ Import successful')"
