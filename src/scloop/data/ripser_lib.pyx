@@ -19,7 +19,7 @@ class RipserResults:
     cocycles_by_dim: list
     num_edges: int
 
-cdef list converting_cocycles_to_numpy(vector[vector[vector[int]]] cocycles_by_dim, int dim): 
+cdef list converting_cocycles_to_list(vector[vector[vector[int]]] cocycles_by_dim, int dim): 
     '''
     This is a vector of representative cocycles for each
     dimension. For now, only cocycles above dimension 0 are added, so
@@ -60,7 +60,7 @@ cdef list converting_cocycles_to_numpy(vector[vector[vector[int]]] cocycles_by_d
         cocycle_representatives.append(cocycle_rep_members)
     return cocycle_representatives
 
-cdef list converting_birth_death_to_numpy(vector[vector[value_t]] births_and_deaths_by_dim, int dim):
+cdef list converting_birth_death_to_list(vector[vector[value_t]] births_and_deaths_by_dim, int dim):
     '''
     This is a vector of unrolled persistence diagrams
     so, for example births_and_deaths_by_dim[0] contains a list of
@@ -96,8 +96,8 @@ def ripser(
     cdef int NEdges = distance_matrix.nnz
     cdef int N = distance_matrix.shape[0]
     cdef ripserResults res = rips_dm_sparse(I, J, V, NEdges, N, modulus, dim_max, threshold, int(do_cocycles))
-    cdef list persistence_diagrams = [converting_birth_death_to_numpy(res.births_and_deaths_by_dim, i) for i in range(dim_max)]
-    cdef list cocycle_representatives = [converting_cocycles_to_numpy(res.cocycles_by_dim, i) for i in range(1, dim_max)]
+    cdef list persistence_diagrams = [converting_birth_death_to_list(res.births_and_deaths_by_dim, i) for i in range(dim_max + 1)]
+    cdef list cocycle_representatives = [converting_cocycles_to_list(res.cocycles_by_dim, i) for i in range(dim_max + 1)]
     return RipserResults(
         persistence_diagrams,
         cocycle_representatives,

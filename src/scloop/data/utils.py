@@ -7,13 +7,8 @@ import numpy as np
 from pynndescent import NNDescent
 from scipy.sparse import csr_matrix, diags
 from scipy.spatial.distance import cdist, hamming, pdist
-from sksparse.cholmod import cholesky
-
-from bioinfoLib.linearAlgebra.gauss_mod2_m4ri import solve_mod2
-from bioinfoLib.R.utils import trajectory_distance
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
-
 
 def subsample(
     x: np.ndarray,
@@ -40,113 +35,6 @@ def subsample(
         pass
     pw_dist = pdist(x)
 
-
-# TODO: grid search, adjust radius based on gaussian prior
-# TODO: generate a set of representative loops through custom distance function
-# TODO: pair up loops from two sets though frechet distance and do regression based matching
-# TODO: if I generate a set of homologous loops, can I statistically test if a query loop is different or the same as this set?
-def sp_ridge_regression_mod2(
-    one_ridx_A,
-    one_cidx_A,
-    nrow_A,
-    ncol_A,
-    b,
-    ridge_coef_a=0.1,
-    ridge_coef_b=1,
-    n_search_cutoff=100,
-    max_bits_flip=10,
-    max_bits_comb=10,
-    n_post_process=2,
-):
-    # figure out number of ones in each row
-    one_ridx_A_uniq, n_ones_per_row = np.unique(one_ridx_A, return_counts=True)
-    one_ridx_A_uniq = one_ridx_A_uniq[n_ones_per_row > 1]
-    n_ones_per_row = n_ones_per_row[n_ones_per_row > 1]
-    nrow_A_valid = len(one_ridx_A_uniq)
-    # the new columns are used to perform 1 + 1 - 2 = 0
-    data = np.concatenate(
-        [
-            np.ones(len(one_ridx_A)),
-            np.ones(nrow_A_valid) * (n_ones_per_row // 2) * -2,
-        ]
-    )
-    A = csr_matrix(
-        (
-            data,
-            (
-                np.concatenate([one_ridx_A, one_ridx_A_uniq]),
-                np.concatenate([one_cidx_A, np.arange(nrow_A_valid) + ncol_A]),
-            ),
-        ),
-        shape=(nrow_A, ncol_A + nrow_A_valid),
-    )
-    ridge_coef_emp = ridge_coef_a * ridge_coef_b / (ridge_coef_a + ridge_coef_b)
-    B = A.transpose().dot(A) + diags(np.repeat(ridge_coef_emp, ncol_A + nrow_A_valid))
-    factor_emp = cholesky(B)
-    B = A.transpose().dot(A) + diags(np.repeat(ridge_coef_a, ncol_A + nrow_A_valid))
-    factor = cholesky(B)
-    best_diff = np.Inf
-    best_s = None
-
-    x = factor_emp(
-        A.transpose().dot(b) + np.repeat(ridge_coef_emp * 0.5, ncol_A + nrow_A_valid)
-    )
-    c = (ridge_coef_a * x + ridge_coef_b * 0.5) / (ridge_coef_a + ridge_coef_b)
-    min_cut = np.min(c)
-    max_cut = np.max(c)
-    for cut_i in np.linspace(min_cut, max_cut, n_search_cutoff):
-        c_scale = (c - cut_i) / (2 * (np.max(np.abs(c - cut_i))) + 1e-6) + 0.5
-        s = factor(A.transpose().dot(b) + ridge_coef_a * c_scale)
-        min_cut_s = np.min(s)
-        max_cut_s = np.max(s)
-        for cut_j in np.linspace(min_cut_s, max_cut_s, n_search_cutoff):
-            s_bin = s.copy()
-            s_bin[s >= cut_j] = 1
-            s_bin[s < cut_j] = 0
-            pred = A[:, :ncol_A].dot(s_bin[:ncol_A]) % 2
-            diff = hamming(pred, b)
-            if diff < best_diff:
-                best_diff = diff
-                best_s = s_bin
-
-    for _ in range(n_post_process):
-        if best_diff == 0:
-            break
-        # try bit flip to improve solution
-        grad_vec = np.zeros(ncol_A)
-        for i in range(ncol_A):
-            best_s_tmp = best_s.copy()
-            best_s_tmp[i] = 1 - best_s_tmp[i]
-            pred = A[:, :ncol_A].dot(best_s_tmp[:ncol_A]) % 2
-            diff = hamming(pred, b)
-            grad_vec[i] = diff - best_diff
-        # find bits that improve the result
-        good_bits = np.where(grad_vec <= 0)[0]
-        if len(good_bits) > 0:
-            best_bits = np.argsort(grad_vec[good_bits])[
-                : min(max_bits_flip, len(good_bits))
-            ]
-            best_bits = good_bits[best_bits]
-            best_s_k = best_s.copy()
-            best_diff_k = best_diff
-            for n_flips in range(1, min(max_bits_comb, len(best_bits)) + 1):
-                for bit_comb in itertools.combinations(best_bits, n_flips):
-                    best_s_tmp = best_s.copy()
-                    for bit_idx in bit_comb:
-                        best_s_tmp[bit_idx] = 1 - best_s_tmp[bit_idx]
-                    pred = A[:, :ncol_A].dot(best_s_tmp[:ncol_A]) % 2
-                    diff = hamming(pred, b)
-                    if diff < best_diff:
-                        best_s_k = best_s_tmp
-                        best_diff_k = diff
-                        if diff == 0:
-                            break
-            best_s = best_s_k.copy()
-            best_diff = best_diff_k
-
-    return (A[:, :ncol_A], best_s[:ncol_A])
-
-
 def edge_idx_encode(i, j, n_vertices, self_edge=True):
     if i > j:
         i, j = j, i
@@ -155,7 +43,6 @@ def edge_idx_encode(i, j, n_vertices, self_edge=True):
         return i * n_vertices + j
     else:
         return i * n_vertices - i * (i + 1) // 2 + (j - i - 1)
-
 
 def trig_idx_encode(i, j, k, n_vertices, self_edge=True):
     i, j, k = sorted([i, j, k])
@@ -371,7 +258,7 @@ def compute_cross_match_mapping():
     pass
 
 
-def donut_2d_iso(r1, r2, n_points, noise, seed):
+def donut_2d(r1, r2, n_points, noise, seed):
     np.random.seed(seed)
     rho = (r1 - r2) * np.sqrt(np.random.rand(n_points)) + r2
     theta = 2 * np.pi * np.random.rand(n_points)
@@ -380,7 +267,7 @@ def donut_2d_iso(r1, r2, n_points, noise, seed):
     return (x, y)
 
 
-def disk_2d_iso(r, n_points, noise, seed):
+def disk_2d(r, n_points, noise, seed):
     np.random.seed(seed)
     rho = r * np.sqrt(np.random.rand(n_points))
     theta = 2 * np.pi * np.random.rand(n_points)
@@ -389,7 +276,7 @@ def disk_2d_iso(r, n_points, noise, seed):
     return (x, y)
 
 
-def disk_2d_two_holes_iso(r, r1, r2, c1_x, c1_y, c2_x, c2_y, n_points, noise, seed):
+def disk_2d_two_holes(r, r1, r2, c1_x, c1_y, c2_x, c2_y, n_points, noise, seed):
     np.random.seed(seed)
     rho = r * np.sqrt(np.random.rand(n_points * 2))
     theta = 2 * np.pi * np.random.rand(n_points * 2)
@@ -411,3 +298,108 @@ def disk_2d_two_holes_iso(r, r1, r2, c1_x, c1_y, c2_x, c2_y, n_points, noise, se
     x = x[idx_keep] + np.random.normal(0, noise, n_points)
     y = y[idx_keep] + np.random.normal(0, noise, n_points)
     return (x, y)
+
+# # TODO: grid search, adjust radius based on gaussian prior
+# # TODO: generate a set of representative loops through custom distance function
+# # TODO: pair up loops from two sets though frechet distance and do regression based matching
+# # TODO: if I generate a set of homologous loops, can I statistically test if a query loop is different or the same as this set?
+# def sp_ridge_regression_mod2(
+#     one_ridx_A,
+#     one_cidx_A,
+#     nrow_A,
+#     ncol_A,
+#     b,
+#     ridge_coef_a=0.1,
+#     ridge_coef_b=1,
+#     n_search_cutoff=100,
+#     max_bits_flip=10,
+#     max_bits_comb=10,
+#     n_post_process=2,
+# ):
+#     # figure out number of ones in each row
+#     one_ridx_A_uniq, n_ones_per_row = np.unique(one_ridx_A, return_counts=True)
+#     one_ridx_A_uniq = one_ridx_A_uniq[n_ones_per_row > 1]
+#     n_ones_per_row = n_ones_per_row[n_ones_per_row > 1]
+#     nrow_A_valid = len(one_ridx_A_uniq)
+#     # the new columns are used to perform 1 + 1 - 2 = 0
+#     data = np.concatenate(
+#         [
+#             np.ones(len(one_ridx_A)),
+#             np.ones(nrow_A_valid) * (n_ones_per_row // 2) * -2,
+#         ]
+#     )
+#     A = csr_matrix(
+#         (
+#             data,
+#             (
+#                 np.concatenate([one_ridx_A, one_ridx_A_uniq]),
+#                 np.concatenate([one_cidx_A, np.arange(nrow_A_valid) + ncol_A]),
+#             ),
+#         ),
+#         shape=(nrow_A, ncol_A + nrow_A_valid),
+#     )
+#     ridge_coef_emp = ridge_coef_a * ridge_coef_b / (ridge_coef_a + ridge_coef_b)
+#     B = A.transpose().dot(A) + diags(np.repeat(ridge_coef_emp, ncol_A + nrow_A_valid))
+#     factor_emp = cholesky(B)
+#     B = A.transpose().dot(A) + diags(np.repeat(ridge_coef_a, ncol_A + nrow_A_valid))
+#     factor = cholesky(B)
+#     best_diff = np.Inf
+#     best_s = None
+
+#     x = factor_emp(
+#         A.transpose().dot(b) + np.repeat(ridge_coef_emp * 0.5, ncol_A + nrow_A_valid)
+#     )
+#     c = (ridge_coef_a * x + ridge_coef_b * 0.5) / (ridge_coef_a + ridge_coef_b)
+#     min_cut = np.min(c)
+#     max_cut = np.max(c)
+#     for cut_i in np.linspace(min_cut, max_cut, n_search_cutoff):
+#         c_scale = (c - cut_i) / (2 * (np.max(np.abs(c - cut_i))) + 1e-6) + 0.5
+#         s = factor(A.transpose().dot(b) + ridge_coef_a * c_scale)
+#         min_cut_s = np.min(s)
+#         max_cut_s = np.max(s)
+#         for cut_j in np.linspace(min_cut_s, max_cut_s, n_search_cutoff):
+#             s_bin = s.copy()
+#             s_bin[s >= cut_j] = 1
+#             s_bin[s < cut_j] = 0
+#             pred = A[:, :ncol_A].dot(s_bin[:ncol_A]) % 2
+#             diff = hamming(pred, b)
+#             if diff < best_diff:
+#                 best_diff = diff
+#                 best_s = s_bin
+
+#     for _ in range(n_post_process):
+#         if best_diff == 0:
+#             break
+#         # try bit flip to improve solution
+#         grad_vec = np.zeros(ncol_A)
+#         for i in range(ncol_A):
+#             best_s_tmp = best_s.copy()
+#             best_s_tmp[i] = 1 - best_s_tmp[i]
+#             pred = A[:, :ncol_A].dot(best_s_tmp[:ncol_A]) % 2
+#             diff = hamming(pred, b)
+#             grad_vec[i] = diff - best_diff
+#         # find bits that improve the result
+#         good_bits = np.where(grad_vec <= 0)[0]
+#         if len(good_bits) > 0:
+#             best_bits = np.argsort(grad_vec[good_bits])[
+#                 : min(max_bits_flip, len(good_bits))
+#             ]
+#             best_bits = good_bits[best_bits]
+#             best_s_k = best_s.copy()
+#             best_diff_k = best_diff
+#             for n_flips in range(1, min(max_bits_comb, len(best_bits)) + 1):
+#                 for bit_comb in itertools.combinations(best_bits, n_flips):
+#                     best_s_tmp = best_s.copy()
+#                     for bit_idx in bit_comb:
+#                         best_s_tmp[bit_idx] = 1 - best_s_tmp[bit_idx]
+#                     pred = A[:, :ncol_A].dot(best_s_tmp[:ncol_A]) % 2
+#                     diff = hamming(pred, b)
+#                     if diff < best_diff:
+#                         best_s_k = best_s_tmp
+#                         best_diff_k = diff
+#                         if diff == 0:
+#                             break
+#             best_s = best_s_k.copy()
+#             best_diff = best_diff_k
+
+#     return (A[:, :ncol_A], best_s[:ncol_A])
