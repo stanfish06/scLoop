@@ -23,6 +23,11 @@ jobs:
     - name: Install uv
       run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
+    - name: Install Python dependencies
+      run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
+        uv pip install --system cython setuptools
+
     - name: Build m4ri library
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
