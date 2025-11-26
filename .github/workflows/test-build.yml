@@ -26,15 +26,19 @@ jobs:
     - name: Install Python dependencies
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
-        uv pip install --system cython setuptools
+        uv venv
+        source .venv/bin/activate
+        uv pip install cython setuptools
 
     - name: Build m4ri library
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
+        source .venv/bin/activate
         make build-m4ri
 
     - name: Test package build
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
+        source .venv/bin/activate
         make build
         echo "✓ Build successful"
