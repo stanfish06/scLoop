@@ -42,6 +42,9 @@ ext-modules = [
     "./src/scloop/data/ripser_lib.pyx",
     "./src/scloop/data/ripser.cpp",
   ], language = "c++", optional = false },
+  { name = "scloop.utils.linear_algebra_gf2.m4ri_lib", sources = [
+    "./src/scloop/utils/linear_algebra_gf2/m4ri_lib.pyx",
+  ], language = "c", optional = false, libraries = ["m4ri"] },
 ]
 
 [tool.uv]

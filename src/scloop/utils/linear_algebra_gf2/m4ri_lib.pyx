@@ -8,16 +8,16 @@ cdef extern from "m4ri/m4ri.h":
         rci_t ncols
         wi_t width
 
-    cdef mzd_t *mzd_init(rci_t, rci_t)
-    cdef void mzd_free(mzd_t *)
-    cdef void mzd_write_bit(mzd_t *m, rci_t row, rci_t col, BIT value)
-    cdef BIT mzd_read_bit(mzd_t *M, rci_t row, rci_t col)
+    mzd_t *mzd_init(rci_t, rci_t)
+    void mzd_free(mzd_t *)
+    void mzd_write_bit(mzd_t *m, rci_t row, rci_t col, BIT value)
+    BIT mzd_read_bit(mzd_t *M, rci_t row, rci_t col)
 
-    cdef void mzd_print(mzd_t *)
-    cdef int mzd_solve_left(mzd_t *A, mzd_t *B, int cutoff, int inconsistency_check)
+    void mzd_print(mzd_t *)
+    int mzd_solve_left(mzd_t *A, mzd_t *B, int cutoff, int inconsistency_check)
 
 
-def solve_mod2(one_ridx_A, one_cidx_A, nrow_A, ncol_A, one_idx_b):
+def solve_gf2(one_ridx_A, one_cidx_A, nrow_A, ncol_A, one_idx_b):
     assert nrow_A >= ncol_A, "number of rows must be greater than or equal to the number of columns" 
     cdef mzd_t *A = mzd_init(nrow_A, ncol_A);
     cdef mzd_t *b = mzd_init(nrow_A, 1);
