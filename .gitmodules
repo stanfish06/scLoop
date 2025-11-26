@@ -1,3 +1,6 @@
 [submodule "src/scloop/utils/discrete-frechet-distance"]
 	path = src/scloop/utils/discrete-frechet-distance
 	url = https://github.com/stanfish06/discrete-frechet-distance.git
+[submodule "src/scloop/utils/linear_algebra_gf2/m4ri"]
+	path = src/scloop/utils/linear_algebra_gf2/m4ri
+	url = https://github.com/stanfish06/m4ri.git
