@@ -23,6 +23,11 @@ jobs:
     - name: Install uv
       run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
+    - name: Build m4ri library
+      run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
+        make build-m4ri
+
     - name: Test package build
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"

@@ -12,13 +12,30 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool m4 build-essential
 
     - name: Install uv
       run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
-    - name: Create venv and test import
+    - name: Build m4ri library
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
+        make build-m4ri
+
+    - name: Build and install package
+      run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
+        make build
         make sync
+
+    - name: Test import
+      run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
         source .venv/bin/activate
-        uv run python -c "import scloop; print('✓ Import successful')"
+        python -c "import scloop; print('✓ Import successful')"

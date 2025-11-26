@@ -10,6 +10,7 @@ from scipy.spatial.distance import cdist, hamming, pdist
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
+
 def subsample(
     x: np.ndarray,
     n: int,
@@ -35,6 +36,7 @@ def subsample(
         pass
     pw_dist = pdist(x)
 
+
 def edge_idx_encode(i, j, n_vertices, self_edge=True):
     if i > j:
         i, j = j, i
@@ -43,6 +45,7 @@ def edge_idx_encode(i, j, n_vertices, self_edge=True):
         return i * n_vertices + j
     else:
         return i * n_vertices - i * (i + 1) // 2 + (j - i - 1)
+
 
 def trig_idx_encode(i, j, k, n_vertices, self_edge=True):
     i, j, k = sorted([i, j, k])
@@ -298,6 +301,7 @@ def disk_2d_two_holes(r, r1, r2, c1_x, c1_y, c2_x, c2_y, n_points, noise, seed):
     x = x[idx_keep] + np.random.normal(0, noise, n_points)
     y = y[idx_keep] + np.random.normal(0, noise, n_points)
     return (x, y)
+
 
 # # TODO: grid search, adjust radius based on gaussian prior
 # # TODO: generate a set of representative loops through custom distance function

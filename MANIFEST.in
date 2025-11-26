@@ -1,0 +1,4 @@
+include src/scloop/utils/linear_algebra_gf2/libm4ri.a
+recursive-include src/scloop/utils/linear_algebra_gf2/include *.h
+include src/scloop/data/*.cpp
+include src/scloop/data/*.h
