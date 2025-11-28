@@ -1,3 +1,4 @@
+# Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Mchigan)
 cimport cython
 from libcpp.vector cimport vector 
 from scipy.sparse import coo_matrix

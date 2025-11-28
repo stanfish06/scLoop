@@ -1,3 +1,4 @@
+# Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Mchigan)
 cdef extern from "m4ri/m4ri.h":
     ctypedef int rci_t
     ctypedef int wi_t

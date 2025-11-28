@@ -1,3 +1,4 @@
+# Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Mchigan)
 import itertools
 import warnings
 from itertools import product
