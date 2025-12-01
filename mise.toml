@@ -7,6 +7,17 @@ CPLUS_INCLUDE_PATH = "{{config_root}}/src/scloop/data"
 [settings]
 python.uv_venv_auto = true
 
+[tasks.clean]
+run = [
+	"uv cache clean",
+	"uv cache prune",
+	"rm -rf .venv",
+	"rm -rf dist",
+	"rm -rf ./src/scloop.egg-info",
+	"rm -f uv.lock",
+	"find ./src -name '*.so'  -type f -delete",
+]
+
 [tasks.sync_full]
 run = [
 	"uv cache clean",
