@@ -21,8 +21,11 @@ extensions = [
         extra_link_args=["-fopenmp"],
     ),
     Extension(
-        "scloop.utils.linear_algebra_gf2.utils.distance_metrics",
-        sources=["./src/scloop/utils/distance_metrics/frechet.pyx"],
+        "scloop.utils.distance_metrics.frechet",
+        sources=[
+            "./src/scloop/utils/distance_metrics/frechet.pyx",
+            "./src/scloop/utils/distance_metrics/discrete-frechet-distance/Frechet.cpp",
+        ],
         include_dirs=["./src/scloop/utils/distance_metrics/discrete-frechet-distance"],
         language="c++",
     ),

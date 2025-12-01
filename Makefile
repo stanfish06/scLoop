@@ -18,11 +18,11 @@ build-m4ri:
 build: build-m4ri
 	CFLAGS="-I$(M4RI_PREFIX)/include" \
 	LDFLAGS="-L$(M4RI_PREFIX) -Wl,-rpath,$(M4RI_PREFIX)" \
-	CPLUS_INCLUDE_PATH=$(PROJECT_ROOT)/src/scloop/data \
+	CPLUS_INCLUDE_PATH=$(PROJECT_ROOT)/src/scloop/data:$(DM_PREFIX) \
 		uv build
 
 sync:
-	CPLUS_INCLUDE_PATH=$(PROJECT_ROOT)/src/scloop/data uv sync
+	CPLUS_INCLUDE_PATH=$(PROJECT_ROOT)/src/scloop/data:$(DM_PREFIX)/discrete-frechet-distance uv sync
 
 clean:
 	rm -rf dist/ *.egg-info
