@@ -34,6 +34,7 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: |
             yum install -y autoconf automake libtool m4
             cd {project}
+            unset CFLAGS LDFLAGS CPLUS_INCLUDE_PATH
             make build-m4ri
           CIBW_ENVIRONMENT: >
             CFLAGS="-I{project}/src/scloop/utils/linear_algebra_gf2/include"
