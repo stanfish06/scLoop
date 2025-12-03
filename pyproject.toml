@@ -84,10 +84,9 @@ executionEnvironments = [
 venvPath = "/home/stanfish/Git/scloop"
 venv = ".venv"
 
-# archive
-# [build-system]
-# build-backend = "setuptools.build_meta"
-# requires = [ "cython", "setuptools>74.1" ]
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["Cython>=3.0.12", "setuptools>=74.1"]
 
 # [tool.setuptools]
 # package-dir = { "" = "src" }
