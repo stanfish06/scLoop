@@ -9,32 +9,31 @@ python.uv_venv_auto = true
 
 [tasks.clean]
 run = [
-	"uv cache clean",
-	"uv cache prune",
-	"rm -rf .venv",
-	"rm -rf dist",
-	"rm -rf ./src/scloop.egg-info",
-	"rm -f uv.lock",
-	"find ./src -name '*.so'  -type f -delete",
+    "uv cache clean",
+    "uv cache prune",
+    "rm -rf .venv",
+    "rm -rf dist",
+    "rm -rf ./src/scloop.egg-info",
+    "rm -f uv.lock",
+    "find ./src -name '*.so'  -type f -delete",
 ]
 
 [tasks.sync_full]
 run = [
-	"uv cache clean",
-	"uv cache prune",
-	"rm -rf .venv",
-	"rm -rf dist",
-	"rm -rf ./src/scloop.egg-info",
-	"rm -f uv.lock",
-	"find ./src -name '*.so'  -type f -delete",
-    "make rebuild",
+    "uv cache clean",
+    "uv cache prune",
+    "rm -rf .venv",
+    "rm -rf dist",
+    "rm -rf ./src/scloop.egg-info",
+    "rm -f uv.lock",
+    "find ./src -name '*.so'  -type f -delete",
+    "make build-m4ri",
     "uv sync"
 ]
 
 [tasks.sync]
 run = [
     "uv sync",
-    "uv build"
 ]
 
 [tasks.format]
