@@ -57,6 +57,14 @@ typedef struct {
 } ripserResults;
 
 /*
+ Data structure for returning dimension 2 boundary matrix
+*/
+typedef struct {
+    std::vector<std::vector<index_t>> triangle_vertices;
+    std::vector<value_t> triangle_diameters;
+} boundaryMatrixResults;
+
+/*
   Main data structure
 */
 template <typename DistanceMatrix>
@@ -138,6 +146,9 @@ public:
     void compute_barcodes();
 
     void copy_results(ripserResults& res);
+
+    std::vector<std::pair<std::vector<index_t>, value_t>>
+    assemble_full_dim_2_boundary_matrix();
 };
 
 // main api
@@ -159,6 +170,22 @@ ripserResults rips_dm(float* D, int N, int modulus, int dim_max,
 ripserResults rips_dm_sparse(int* I, int* J, float* V, int NEdges, int N,
                              int modulus, int dim_max, float threshold,
                              int do_cocycles);
+
+/**
+ * @brief Compute dimension 2 boundary matrix without redundant columns
+ * @details For each tetrahedron, only 3 of the 4 triangular faces are included,
+ *          as the 4th can be derived from the other 3 (in F2 homology).
+ * @param I row indices of sparse distance matrix
+ * @param J column indices of sparse distance matrix
+ * @param V values of sparse distance matrix
+ * @param NEdges number of nonzero entries in distance matrix
+ * @param N number of vertices
+ * @param threshold maximum diameter for simplices to include
+ * @return boundaryMatrixResults containing triangle vertices and diameters
+ */
+boundaryMatrixResults get_boundary_matrix_sparse(int* I, int* J, float* V,
+                                                  int NEdges, int N,
+                                                  float threshold);
+
 // TODO: need function to extract cocycles
-// TODO: need function to extract coboundary matrix
 #endif

@@ -512,6 +512,14 @@ typedef struct {
     int num_edges;
 } ripserResults;
 
+/* This is the data structure for returning dimension 2 boundary matrix */
+typedef struct {
+    /* Vector of triangles, where each triangle is represented by its 3 vertex indices */
+    std::vector<std::vector<index_t>> triangle_vertices;
+    /* Vector of diameters corresponding to each triangle */
+    std::vector<value_t> triangle_diameters;
+} boundaryMatrixResults;
+
 template <typename DistanceMatrix>
 class ripser
 {
@@ -1289,6 +1297,38 @@ ripserResults rips_dm_sparse(int* I, int* J, float* V, int NEdges, int N,
     ripserResults res;
     r.copy_results(res);
     res.num_edges = num_edges;
+    return res;
+}
+
+boundaryMatrixResults get_boundary_matrix_sparse(int* I, int* J, float* V,
+                                                  int NEdges, int N,
+                                                  float threshold)
+{
+    // Use modulus 2 for Z/2 homology (unoriented simplices)
+    int modulus = 2;
+    // Need dim_max = 3 to enumerate tetrahedra for redundancy checking
+    int dim_max = 3;
+    float ratio = 1.0;
+    int do_cocycles = 0;  // Don't need cocycles for boundary matrix
+
+    // Setup distance matrix and create ripser instance
+    ripser<sparse_distance_matrix> r(
+        sparse_distance_matrix(I, J, V, NEdges, N, threshold), dim_max,
+        threshold, ratio, modulus, do_cocycles);
+
+    // Call the boundary matrix assembly function
+    auto columns = r.assemble_full_dim_2_boundary_matrix();
+
+    // Convert to the return structure
+    boundaryMatrixResults res;
+    res.triangle_vertices.reserve(columns.size());
+    res.triangle_diameters.reserve(columns.size());
+
+    for (const auto& col : columns) {
+        res.triangle_vertices.push_back(col.first);
+        res.triangle_diameters.push_back(col.second);
+    }
+
     return res;
 }
 

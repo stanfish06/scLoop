@@ -27,8 +27,8 @@ run = [
 	"rm -rf ./src/scloop.egg-info",
 	"rm -f uv.lock",
 	"find ./src -name '*.so'  -type f -delete",
-    "uv sync",
-    "uv build"
+    "make rebuild",
+    "uv sync"
 ]
 
 [tasks.sync]
