@@ -53,6 +53,7 @@ derivative works thereof, in binary and source code form.
 #include <queue>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 
 // #define INDICATE_PROGRESS
 
@@ -606,7 +607,82 @@ public:
         return out;
     }
 
+
     class simplex_coboundary_enumerator;
+
+    /*
+		Compute full dim_2 boundary matrix with no redundant columns.
+		Return triangles with its vertices and diameter.
+		For each tetrahedron, only 3 triangles are needed, as the last one can be derived by adding the other three together.
+	 */
+    std::vector<std::pair<std::vector<index_t>, value_t>>
+    assemble_full_dim_2_boundary_matrix() {
+		std::vector<diameter_index_t> edges;
+		std::vector<std::pair<std::vector<index_t>, value_t>> columns;
+		std::unordered_set<index_t> seen_trigs;
+		std::unordered_map<index_t, int> seen_tetrads;
+		edges = get_edges();
+		for (diameter_index_t &edge : edges) {
+			// skip if diameter of the edge exceeds threshold
+			if (get_diameter(edge) > threshold) {
+				continue;
+			}
+            simplex_coboundary_enumerator trigs(diameter_entry_t(edge, 1), 1, *this);
+            while (trigs.has_next(false)) {
+				auto trig = trigs.next();
+				index_t trig_idx = get_index(trig);
+				// skip if already seen this triangle
+				if (!seen_trigs.insert(trig_idx).second) {
+					continue;
+				}
+				// skip if diameter of the triangle exceeds threshold
+				value_t trig_diam = get_diameter(trig);
+				if (trig_diam > threshold) {
+					continue;
+				}
+				// Check if this triangle should be included
+				simplex_coboundary_enumerator tetrads(diameter_entry_t(trig, 2), 2, *this);
+				bool should_add = false;
+				bool is_redundant = false;
+				// Check if triangle is part of any tetrahedron
+				if (!tetrads.has_next(false)) {
+					// Standalone triangle - always include
+					should_add = true;
+				} else {
+					// Process all tetrahedra containing this triangle
+					while (tetrads.has_next(false)) {
+						auto tetrad = tetrads.next();
+						if (get_diameter(tetrad) > threshold) {
+							// Skip tetrahedra outside the filtered complex
+							// Note: if diam(tetrad) > threshold, then at least one of its
+							// 4 triangular faces also exceeds threshold. The remaining faces
+							// (including this triangle) are NOT redundant since we don't have
+							// all 4 faces to form the complete boundary relation.
+							// These triangles will be correctly included as non-redundant.
+							continue;
+						}
+						index_t tetrad_idx = get_index(tetrad);
+						int count = ++seen_tetrads[tetrad_idx];
+						if (count > 3) {
+							// This triangle is the 4th+ face of this tetrahedron
+							// It's redundant and linearly dependent on the other 3
+							is_redundant = true;
+							// Continue to update counts for all tetrahedra
+						}
+					}
+					// Only add if not redundant in any tetrahedron
+					should_add = !is_redundant;
+				}
+				// add triangle exactly once if it should be included
+				if (should_add) {
+					std::vector<index_t> vertices(3);
+					get_simplex_vertices(trig_idx, 2, dist.size(), vertices.rbegin());
+					columns.push_back(std::make_pair(vertices, trig_diam));
+				}
+            }
+		}
+		return columns;
+    }
 
     void
     assemble_columns_to_reduce(std::vector<diameter_index_t>& simplices,
@@ -626,6 +702,7 @@ public:
             simplex_coboundary_enumerator cofacets(diameter_entry_t(simplex, 1),
                                                    dim, *this);
 
+												   
             while (cofacets.has_next(false)) {
 #ifdef INDICATE_PROGRESS
                 if (std::chrono::steady_clock::now() > next) {
