@@ -24,6 +24,15 @@ build: build-m4ri
 sync: build-m4ri
 	CPLUS_INCLUDE_PATH=$(PROJECT_ROOT)/src/scloop/data:$(DM_PREFIX)/discrete-frechet-distance uv sync
 
+full-sync: build-m4ri
+	uv cache clean
+	uv cache prune
+	rm -rf .venv
+	rm -rf ./src/scloop.egg-info
+	rm -f uv.lock
+	find ./src -name '*.so'  -type f -delete
+	CPLUS_INCLUDE_PATH=$(PROJECT_ROOT)/src/scloop/data:$(DM_PREFIX)/discrete-frechet-distance uv sync
+
 clean:
 	rm -rf dist/ *.egg-info
 	cd $(M4RI_SRC) && $(MAKE) clean || true

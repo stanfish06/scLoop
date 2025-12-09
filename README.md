@@ -25,6 +25,20 @@ make rebuild
 make sync
 ```
 
+or
+
+```bash
+make full-sync
+```
+
+to prevent partial compilation of some modules
+
+## Installation
+**Note: this package is still under development. The current build will likely not work.**
+```bash
+pip install scloop
+```
+
 ## Project Structure
 ```
 src/scloop/
