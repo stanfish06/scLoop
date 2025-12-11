@@ -3,6 +3,6 @@
 
 from .homology import (
     compute_boundary_matrix_data,
-    compute_persistence_diagram,
+    compute_persistence_diagram_and_cocycles,
     compute_sparse_pairwise_distance,
 )
