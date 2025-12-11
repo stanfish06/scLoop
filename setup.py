@@ -1,6 +1,7 @@
-from setuptools import setup, Extension
-from Cython.Build import cythonize
 import os
+
+from Cython.Build import cythonize
+from setuptools import Extension, setup
 
 project_root = os.path.dirname(os.path.abspath(__file__))
 m4ri_dir = os.path.join(project_root, "src/scloop/utils/linear_algebra_gf2")

@@ -4,11 +4,10 @@ import warnings
 import numpy as np
 import scanpy as sc
 from anndata import AnnData
-from pydantic import validate_call, BaseModel
-from scipy.sparse import issparse
+from pydantic import validate_call
 
-from ..data.types import FeatureSelectionMethod, EmbeddingMethod, EmbeddingNeighbors
 from ..data.metadata import PreprocessMeta, ScloopMeta
+from ..data.types import EmbeddingMethod, EmbeddingNeighbors, FeatureSelectionMethod
 
 __all__ = ["prepare_adata"]
 

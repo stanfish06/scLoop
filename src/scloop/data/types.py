@@ -1,5 +1,6 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Michigan)
-from typing import Literal, Annotated, TypeAlias
+from typing import Annotated, Literal, TypeAlias
+
 from pydantic import Field
 
 FeatureSelectionMethod = Literal["hvg", "delve", "none"]

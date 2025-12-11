@@ -1,2 +1,2 @@
-from .ripser_lib import RipserResults, ripser, get_boundary_matrix
 from .containers import HomologyData
+from .ripser_lib import RipserResults, get_boundary_matrix, ripser

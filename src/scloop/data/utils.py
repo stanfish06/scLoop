@@ -1,6 +1,7 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Mchigan)
-from .types import Index_t, Size_t
 from numba import jit
+
+from .types import Index_t, Size_t
 
 
 @jit(nopython=True)

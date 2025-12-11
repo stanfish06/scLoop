@@ -1,20 +1,21 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Michigan)
 from abc import abstractmethod
-from pydantic.dataclasses import dataclass
-from pydantic import ConfigDict, BaseModel, Field, field_validator, ValidationInfo
-from .metadata import ScloopMeta
-from .analysis_containers import BootstrapAnalysis, HodgeAnalysis
-from anndata import AnnData
-from scipy.sparse import csr_matrix
-from .loop_reconstruction import reconstruct_n_loop_representatives
-from .types import IndexListDistMatrix, Diameter_t, Size_t, Index_t
-from .utils import decode_edges, decode_triangles
+
 import numpy as np
+from anndata import AnnData
+from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
+from pydantic.dataclasses import dataclass
+from scipy.sparse import csr_matrix
+
 from ..computing.homology import (
-    compute_sparse_pairwise_distance,
-    compute_persistence_diagram,
     compute_boundary_matrix_data,
+    compute_persistence_diagram_and_cocycles,
+    compute_sparse_pairwise_distance,
 )
+from .analysis_containers import BootstrapAnalysis, HodgeAnalysis
+from .metadata import ScloopMeta
+from .types import Diameter_t, Index_t, IndexListDistMatrix, Size_t
+from .utils import decode_edges, decode_triangles
 
 
 class BoundaryMatrix(BaseModel):
@@ -25,6 +26,7 @@ class BoundaryMatrix(BaseModel):
     shape: tuple[Size_t, Size_t]
     row_simplex_ids: list[Index_t]
     col_simplex_ids: list[Index_t]
+    row_simplex_diams: list[Diameter_t]
     col_simplex_diams: list[Diameter_t]
 
     @field_validator(
@@ -98,16 +100,26 @@ class HomologyData:
         )
 
     def _compute_homology(
-        self, adata: AnnData, thresh: Diameter_t | None = None, **nei_kwargs
+        self,
+        adata: AnnData,
+        thresh: Diameter_t | None = None,
+        bootstrap: bool = False,
+        **nei_kwargs,
     ) -> None:
-        persistence_diagram, _, _ = compute_persistence_diagram(
-            adata=adata, meta=self.meta, thresh=thresh, **nei_kwargs
+        persistence_diagram, _, _ = compute_persistence_diagram_and_cocycles(
+            adata=adata,
+            meta=self.meta,
+            thresh=thresh,
+            bootstrap=bootstrap,
+            **nei_kwargs,
         )
         self.persistence_diagram = persistence_diagram
 
     def _compute_boundary_matrix(
         self, adata: AnnData, thresh: Diameter_t | None = None, **nei_kwargs
     ) -> None:
+        assert self.meta.preprocess
+        assert self.meta.preprocess.num_vertices
         result, *_ = compute_boundary_matrix_data(
             adata=adata, meta=self.meta, thresh=thresh, **nei_kwargs
         )
@@ -117,6 +129,7 @@ class HomologyData:
             shape=(0, 0),
             row_simplex_ids=[],
             col_simplex_ids=[],
+            row_simplex_diams=[],
             col_simplex_diams=result.triangle_diameters,
         )
 

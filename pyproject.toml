@@ -76,6 +76,8 @@ explicit = true
 [tool.ruff]
 format.indent-style = "space"
 format.quote-style = "double"
+lint.extend-select = [ "I" ]
+lint.fixable = [ "ALL" ]
 
 [tool.pyproject-fmt]
 column_width = 120

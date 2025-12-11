@@ -16,19 +16,22 @@ def compute_sparse_pairwise_distance(
     adata: AnnData,
     meta: ScloopMeta,
     bootstrap: bool = False,
+    noise_scale: float = 1e-3,
     thresh: Diameter_t | None = None,
     **nei_kwargs,
 ) -> tuple[csr_matrix, IndexListDistMatrix | None]:
     assert meta.preprocess is not None
     assert meta.preprocess.embedding_method is not None
     boot_idx = None
+    X = adata.obsm[f"X_{meta.preprocess.embedding_method}"]
     if bootstrap:
         boot_idx = np.random.choice(
             adata.shape[0], size=adata.shape[0], replace=True
         ).tolist()
+        X = X[boot_idx] + np.random.normal(scale=noise_scale, size=X.shape)
     return (
         radius_neighbors_graph(
-            X=adata.obsm[f"X_{meta.preprocess.embedding_method}"],
+            X=X,
             radius=thresh,
             **nei_kwargs,
         ),
@@ -36,11 +39,15 @@ def compute_sparse_pairwise_distance(
     )
 
 
-def compute_persistence_diagram(
-    adata: AnnData, meta: ScloopMeta, thresh: Diameter_t | None = None, **nei_kwargs
+def compute_persistence_diagram_and_cocycles(
+    adata: AnnData,
+    meta: ScloopMeta,
+    thresh: Diameter_t | None = None,
+    bootstrap: bool = False,
+    **nei_kwargs,
 ) -> tuple[list[np.ndarray], IndexListDistMatrix | None, csr_matrix]:
     sparse_pairwise_distance_matrix, boot_idx = compute_sparse_pairwise_distance(
-        adata=adata, meta=meta, bootstrap=False, thresh=thresh, **nei_kwargs
+        adata=adata, meta=meta, bootstrap=bootstrap, thresh=thresh, **nei_kwargs
     )
     result = ripser(
         distance_matrix=sparse_pairwise_distance_matrix,
@@ -57,11 +64,11 @@ def compute_boundary_matrix_data(
 ):
     assert meta.preprocess is not None
     assert meta.preprocess.num_vertices is not None
-    sparse_pairwise_distance_matrix, boot_idx = compute_sparse_pairwise_distance(
+    sparse_pairwise_distance_matrix, _ = compute_sparse_pairwise_distance(
         adata=adata, meta=meta, bootstrap=False, thresh=thresh, **nei_kwargs
     )
     result = get_boundary_matrix(sparse_pairwise_distance_matrix, thresh)
     edge_ids, trig_ids = encode_triangles_and_edges(
         np.array(result.triangle_vertices), meta.preprocess.num_vertices
     )
-    return result, edge_ids, trig_ids, boot_idx, sparse_pairwise_distance_matrix
+    return result, edge_ids, trig_ids, sparse_pairwise_distance_matrix
