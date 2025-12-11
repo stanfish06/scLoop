@@ -1,7 +1,7 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Michigan)
 from pydantic import BaseModel
 
-from .types import FeatureSelectionMethod, EmbeddingMethod, EmbeddingNeighbors
+from .types import FeatureSelectionMethod, EmbeddingMethod, EmbeddingNeighbors, Size_t
 
 
 class PreprocessMeta(BaseModel):
@@ -17,6 +17,8 @@ class PreprocessMeta(BaseModel):
     n_neighbors: int
     n_diffusion_comps: int | None = None
     scvi_key: str | None = None
+    downsample_indices: list | None = None
+    num_vertices: Size_t | None = None
 
 
 class ScloopMeta(BaseModel):

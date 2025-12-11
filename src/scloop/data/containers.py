@@ -11,34 +11,16 @@ from scipy.sparse import csr_matrix
 from .ripser_lib import ripser, get_boundary_matrix
 from .loop_reconstruction import reconstruct_n_loop_representatives
 from .types import IndexListDistMatrix, Diameter_t, Size_t, Index_t
-from .utils import (
-    edge_idx_encode,
-    edge_idx_decode,
-    triangle_idx_encode,
-    triangle_idx_decode,
-)
+from .utils import decode_edges, decode_triangles, encode_triangles_and_edges
 from numba import jit
 import numpy as np
 
 
-@jit(nopython=True)
-def _decode_edges(simplex_ids, num_vertices):
-    result = []
-    for sid in simplex_ids:
-        result.append(edge_idx_decode(sid, num_vertices))
-    return result
-
-
-@jit(nopython=True)
-def _decode_triangles(simplex_ids, num_vertices):
-    result = []
-    for sid in simplex_ids:
-        result.append(triangle_idx_decode(sid, num_vertices))
-    return result
-
-
 class BoundaryMatrix(BaseModel):
     num_vertices: Size_t
+    data: tuple[
+        list[Index_t], list[Index_t]
+    ]  # in coo format (row indices, col indices) of ones
     shape: tuple[Size_t, Size_t]
     row_simplex_ids: list[Index_t]
     col_simplex_ids: list[Index_t]
@@ -80,10 +62,10 @@ class BoundaryMatrix(BaseModel):
 
 class BoundaryMatrixD1(BoundaryMatrix):
     def row_simplex_decode(self) -> list[tuple[Index_t, Index_t]]:
-        return _decode_edges(np.array(self.row_simplex_ids), self.num_vertices)
+        return decode_edges(np.array(self.row_simplex_ids), self.num_vertices)
 
     def col_simplex_decode(self) -> list[tuple[Index_t, Index_t, Index_t]]:
-        return _decode_triangles(np.array(self.col_simplex_ids), self.num_vertices)
+        return decode_triangles(np.array(self.col_simplex_ids), self.num_vertices)
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
@@ -95,7 +77,7 @@ class HomologyData:
     meta: ScloopMeta
     persistence_diagram: list[np.ndarray] | None = None
     loop_representatives: list[list[np.ndarray]] | None = None
-    boundary_matrix: tuple | None = None
+    boundary_matrix_d1: BoundaryMatrixD1 | None = None
     bootstrap_data: BootstrapAnalysis | None = None
     hodge_data: HodgeAnalysis | None = None
 
@@ -137,10 +119,23 @@ class HomologyData:
     def _compute_boundary_matrix(
         self, adata: AnnData, thresh: Diameter_t | None = None, **nei_kwargs
     ) -> None:
+        assert self.meta.preprocess
+        assert self.meta.preprocess.num_vertices
         sparse_pairwise_distance_matrix, _ = self._compute_sparse_pairwise_distance(
             adata=adata, bootstrap=False, thresh=thresh, **nei_kwargs
         )
         result = get_boundary_matrix(sparse_pairwise_distance_matrix, thresh)
+        edge_ids, trig_ids = encode_triangles_and_edges(
+            np.array(result.triangle_vertices), self.meta.preprocess.num_vertices
+        )
+        self.boundary_matrix_d1 = BoundaryMatrixD1(
+            num_vertices=self.meta.preprocess.num_vertices,
+            data=([], []),
+            shape=(0, 0),
+            row_simplex_ids=[],
+            col_simplex_ids=[],
+            col_simplex_diams=result.traingle_diameters,
+        )
 
     def _compute_loop_representatives(self):
         pass

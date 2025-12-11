@@ -28,3 +28,37 @@ def triangle_idx_decode(
     i: Index_t, num_vertices: Size_t
 ) -> tuple[Index_t, Index_t, Index_t]:
     return i // num_vertices**2, (i // num_vertices) % num_vertices, i % num_vertices
+
+
+@jit(nopython=True)
+def decode_edges(simplex_ids, num_vertices):
+    result = []
+    for sid in simplex_ids:
+        result.append(edge_idx_decode(sid, num_vertices))
+    return result
+
+
+@jit(nopython=True)
+def decode_triangles(simplex_ids, num_vertices):
+    result = []
+    for sid in simplex_ids:
+        result.append(triangle_idx_decode(sid, num_vertices))
+    return result
+
+
+@jit(nopython=True)
+def encode_triangles_and_edges(triangles, num_vertices):
+    trig_ids = []
+    edge_ids = []
+    for trig in triangles:
+        ids = []
+        ids.append(edge_idx_encode(i=trig[0], j=trig[1], num_vertices=num_vertices))
+        ids.append(edge_idx_encode(i=trig[0], j=trig[2], num_vertices=num_vertices))
+        ids.append(edge_idx_encode(i=trig[1], j=trig[2], num_vertices=num_vertices))
+        edge_ids.append(ids)
+        trig_ids.append(
+            triangle_idx_encode(
+                i=trig[0], j=trig[1], k=trig[2], num_vertices=num_vertices
+            )
+        )
+    return edge_ids, trig_ids
