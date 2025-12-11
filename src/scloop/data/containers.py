@@ -1,19 +1,20 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Michigan)
-from pydantic.dataclasses import dataclass
 from abc import abstractmethod
+from pydantic.dataclasses import dataclass
 from pydantic import ConfigDict, BaseModel, Field, field_validator, ValidationInfo
-from scipy.spatial import distance_matrix
 from .metadata import ScloopMeta
 from .analysis_containers import BootstrapAnalysis, HodgeAnalysis
 from anndata import AnnData
-from sklearn.neighbors import radius_neighbors_graph
 from scipy.sparse import csr_matrix
-from .ripser_lib import ripser, get_boundary_matrix
 from .loop_reconstruction import reconstruct_n_loop_representatives
 from .types import IndexListDistMatrix, Diameter_t, Size_t, Index_t
-from .utils import decode_edges, decode_triangles, encode_triangles_and_edges
-from numba import jit
+from .utils import decode_edges, decode_triangles
 import numpy as np
+from ..computing.homology import (
+    compute_sparse_pairwise_distance,
+    compute_persistence_diagram,
+    compute_boundary_matrix_data,
+)
 
 
 class BoundaryMatrix(BaseModel):
@@ -88,45 +89,27 @@ class HomologyData:
         thresh: Diameter_t | None = None,
         **nei_kwargs,
     ) -> tuple[csr_matrix, IndexListDistMatrix | None]:
-        assert self.meta.preprocess is not None
-        assert self.meta.preprocess.embedding_method is not None
-        boot_idx = None
-        if bootstrap:
-            boot_idx = np.random.choice(
-                adata.shape[0], size=adata.shape[0], replace=True
-            ).tolist()
-        return radius_neighbors_graph(
-            X=adata.obsm[f"X_{self.meta.preprocess.embedding_method}"],
-            radius=thresh,
+        return compute_sparse_pairwise_distance(
+            adata=adata,
+            meta=self.meta,
+            bootstrap=bootstrap,
+            thresh=thresh,
             **nei_kwargs,
-        ), boot_idx
+        )
 
     def _compute_homology(
         self, adata: AnnData, thresh: Diameter_t | None = None, **nei_kwargs
     ) -> None:
-        sparse_pairwise_distance_matrix, _ = self._compute_sparse_pairwise_distance(
-            adata=adata, bootstrap=False, thresh=thresh, **nei_kwargs
+        persistence_diagram, _, _ = compute_persistence_diagram(
+            adata=adata, meta=self.meta, thresh=thresh, **nei_kwargs
         )
-        result = ripser(
-            distance_matrix=sparse_pairwise_distance_matrix,
-            modulus=2,
-            dim_max=1,
-            threshold=thresh,
-            do_cocyles=True,
-        )
-        self.persistence_diagram = result.births_and_deaths_by_dim
+        self.persistence_diagram = persistence_diagram
 
     def _compute_boundary_matrix(
         self, adata: AnnData, thresh: Diameter_t | None = None, **nei_kwargs
     ) -> None:
-        assert self.meta.preprocess
-        assert self.meta.preprocess.num_vertices
-        sparse_pairwise_distance_matrix, _ = self._compute_sparse_pairwise_distance(
-            adata=adata, bootstrap=False, thresh=thresh, **nei_kwargs
-        )
-        result = get_boundary_matrix(sparse_pairwise_distance_matrix, thresh)
-        edge_ids, trig_ids = encode_triangles_and_edges(
-            np.array(result.triangle_vertices), self.meta.preprocess.num_vertices
+        result, *_ = compute_boundary_matrix_data(
+            adata=adata, meta=self.meta, thresh=thresh, **nei_kwargs
         )
         self.boundary_matrix_d1 = BoundaryMatrixD1(
             num_vertices=self.meta.preprocess.num_vertices,
@@ -134,7 +117,7 @@ class HomologyData:
             shape=(0, 0),
             row_simplex_ids=[],
             col_simplex_ids=[],
-            col_simplex_diams=result.traingle_diameters,
+            col_simplex_diams=result.triangle_diameters,
         )
 
     def _compute_loop_representatives(self):
