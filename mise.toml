@@ -54,7 +54,9 @@ run = [
 [tasks.bump]
 run = [
     "uv version --bump patch",
-    "git tag $(uv version --short)",
+    "git add uv.lock pyproject.toml",
+    'git commit -m "new tag"',
+    "git tag v$(uv version --short)",
     "git push --tags",
     "git push"
 ]

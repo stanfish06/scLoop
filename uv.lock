@@ -2606,7 +2606,7 @@ wheels = [
 
 [[package]]
 name = "scloop"
-version = "0.1.2"
+version = "0.1.4"
 source = { editable = "." }
 dependencies = [
     { name = "cython" },
