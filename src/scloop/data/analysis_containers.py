@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from pydantic import ConfigDict, Field
 from pydantic.dataclasses import dataclass
-from pydantic import Field, ConfigDict
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))

@@ -39,7 +39,8 @@ run = [
 [tasks.format]
 run = [
     "pyproject-fmt pyproject.toml",
-    "uv run ruff format"
+    "uv run ruff format",
+    "uv run ruff check --fix"
 ]
 
 [tasks.info]

@@ -34,6 +34,7 @@ classifiers = [
 ]
 dependencies = [
   "cython>=3.0.12",
+  "igraph>=0.11",
   "numba>=0.62.1",
   "numpy<2",
   "pandas",
@@ -75,6 +76,8 @@ explicit = true
 [tool.ruff]
 format.indent-style = "space"
 format.quote-style = "double"
+lint.extend-select = [ "I" ]
+lint.fixable = [ "ALL" ]
 
 [tool.pyproject-fmt]
 column_width = 120

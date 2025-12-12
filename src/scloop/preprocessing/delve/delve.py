@@ -1,19 +1,19 @@
+import logging
+
 import anndata
-import scipy
 import numpy as np
 import pandas as pd
+import scipy
 from numba import jit
-import logging
-import time
-import os
 
 logging.basicConfig(level=logging.INFO)
-from sklearn.cluster import KMeans
-from sklearn.neighbors import NearestNeighbors
-from sklearn.decomposition import PCA
 import multiprocessing as mp
-from functools import partial
+
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
+
 from .kh import *
 
 
@@ -69,7 +69,7 @@ def delve_fs(
     X, feature_names, obs_names = parse_input(adata)  # parse anndata
 
     try:
-        logging.info(f"Step 1: identifying dynamic feature modules")
+        logging.info("Step 1: identifying dynamic feature modules")
         sub_idx, _, delta_mean, modules = seed_select(
             X=X,
             feature_names=feature_names,
@@ -84,7 +84,7 @@ def delve_fs(
             n_jobs=n_jobs,
         )
 
-        logging.info(f"Step 2: performing feature selection")
+        logging.info("Step 2: performing feature selection")
         if modules is None:
             logging.warning("No modules found, returning None")
             return None, None, None
@@ -164,7 +164,7 @@ def seed_select(
     np.random.seed(random_state)
     random_state_arr = np.random.randint(0, 1000000, n_random_state)
 
-    logging.info(f"estimating feature dynamics")
+    logging.info("estimating feature dynamics")
     sub_idx, adata_sub, delta_mean = delta_exp(
         X=X,
         feature_names=feature_names,
@@ -218,7 +218,7 @@ def seed_select(
 
     if len(dyn_feats) == 0:
         logging.warning(
-            f"No feature clusters have a dynamic variance greater than null. Consider changing the number of clusters or the subsampling size."
+            "No feature clusters have a dynamic variance greater than null. Consider changing the number of clusters or the subsampling size."
         )
         logging.warning(
             f"All {n_random_state} random state runs failed to find dynamic clusters"
@@ -228,7 +228,7 @@ def seed_select(
         dyn_feats = list(np.unique(list(set.intersection(*map(set, dyn_feats)))))
         if len(dyn_feats) == 0:
             logging.warning(
-                f"No features were considered dynamically-expressed across runs."
+                "No features were considered dynamically-expressed across runs."
             )
             logging.warning(
                 f"Found dynamic features in individual runs but none were consistent across all {n_random_state} runs"

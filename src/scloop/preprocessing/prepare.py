@@ -4,11 +4,11 @@ import warnings
 import numpy as np
 import scanpy as sc
 from anndata import AnnData
-from pydantic import validate_call, BaseModel
-from scipy.sparse import issparse
+from pydantic import validate_call
 
-from ..data.types import FeatureSelectionMethod, EmbeddingMethod, EmbeddingNeighbors
 from ..data.metadata import PreprocessMeta, ScloopMeta
+from ..data.types import EmbeddingMethod, EmbeddingNeighbors, FeatureSelectionMethod
+from .downsample import sample
 
 __all__ = ["prepare_adata"]
 
@@ -111,6 +111,11 @@ def prepare_adata(
     n_neighbors: int = 25,
     n_diffusion_comps: int = 25,
     scvi_key: str = "X_scvi",
+    downsample: bool = True,
+    n_downsample: int = 1000,
+    embedding_downsample: EmbeddingMethod | None = None,
+    groupby_downsample: str | None = None,
+    random_state_downsample: int = 0,
     copy: bool = False,
 ):
     """
@@ -124,6 +129,11 @@ def prepare_adata(
         Input anndata object, should be log-normalized with HVGs marked.
     copy: bool
         Whether to make a copy of adata.
+    feature_selection_method : {'hvg', 'delve', 'none'}, default='hvg'
+        Method for feature selection:
+        - 'hvg': Highly variable genes
+        - 'delve': DELVE feature selection
+        - 'none': No feature selection
     """
     adata = adata.copy() if copy else adata
 
@@ -133,7 +143,7 @@ def prepare_adata(
     )
     needs_diffmap = "X_diffmap" not in adata.obsm and embedding_method == "diffmap"
     needs_hvg = feature_selection_method == "hvg"
-    needs_scvi = feature_selection_method == "scvi"
+    needs_scvi = embedding_method == "scvi" or embedding_neighbors == "scvi"
 
     _normalize_and_select_hvg(
         adata,
@@ -166,6 +176,25 @@ def prepare_adata(
         if scvi_key not in adata.obsm:
             raise ValueError(f"scvi key {scvi_key} does not exist in adata.obsm")
 
+    """
+    ========= downsample =========
+    - minimize bottleneck distance
+    - keep rare cell types
+    ==============================
+    """
+    if embedding_downsample is None:
+        embedding_downsample = embedding_method
+    if downsample:
+        indices_downsample = sample(
+            adata=adata,
+            embedding_method=embedding_downsample,
+            groupby=groupby_downsample,
+            n=n_downsample,
+            random_state=random_state_downsample,
+        )
+    else:
+        indices_downsample = None
+
     preprocess_meta = PreprocessMeta(
         library_normalized=library_normalization,
         target_sum=target_sum,
@@ -181,6 +210,10 @@ def prepare_adata(
         n_neighbors=n_neighbors,
         n_diffusion_comps=n_diffusion_comps if needs_diffmap else None,
         scvi_key=scvi_key if needs_scvi else None,
+        indices_downsample=indices_downsample,
+        num_vertices=len(indices_downsample)
+        if indices_downsample is not None
+        else adata.shape[0],
     )
 
     if "scloop_meta" not in adata.uns:
