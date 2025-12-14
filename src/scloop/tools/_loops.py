@@ -28,9 +28,9 @@ def find_loops(
     sparse_dist_mat = hd._compute_homology(adata=adata, thresh=thresh)  # type: ignore[attr-defined]
     hd._compute_boundary_matrix(adata=adata, thresh=thresh)  # type: ignore[attr-defined]
 
+    top_k_val = top_k if top_k is not None else 0
     hd._compute_loop_representatives(  # type: ignore[attr-defined]
         pairwise_distance_matrix=sparse_dist_mat,
-        vertex_ids=meta.preprocess.indices_downsample,
-        top_k=top_k,
+        top_k=top_k_val,
     )
     adata.uns["scloop"] = hd
