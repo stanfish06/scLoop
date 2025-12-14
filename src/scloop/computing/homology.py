@@ -54,7 +54,7 @@ def compute_persistence_diagram_and_cocycles(
     thresh: Diameter_t | None = None,
     bootstrap: bool = False,
     **nei_kwargs,
-) -> tuple[list[np.ndarray], list, IndexListDistMatrix | None, csr_matrix]:
+) -> tuple[list, list, IndexListDistMatrix | None, csr_matrix]:
     sparse_pairwise_distance_matrix, boot_idx = compute_sparse_pairwise_distance(
         adata=adata, meta=meta, bootstrap=bootstrap, thresh=thresh, **nei_kwargs
     )

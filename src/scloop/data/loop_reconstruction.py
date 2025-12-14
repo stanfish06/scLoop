@@ -10,24 +10,23 @@ import numpy as np
 
 def reconstruct_n_loop_representatives(
     cocycles_dim1: List,
-    edges: List[Tuple[int, int]],
-    edge_births: np.ndarray,
+    edges: np.ndarray,
+    edge_diameters: np.ndarray,
     loop_birth: float,
     loop_death: float,
     n: int,
     life_pct: float = 0.1,
     n_force_deviate: int = 4,
-    n_reps_per_loop: int = 8,
+    k_yen: int = 8,
     loop_lower_pct: float = 5,
     loop_upper_pct: float = 95,
-    n_max_cocycles: int = 10,
+    n_cocycles_used: int = 10,
 ) -> Tuple[List[List[int]], List[float]]:
     """
-    Reconstruct diverse loop representatives using Yen-style deviation rounds.
+    Reconstruct diverse loop representatives
     """
     if n <= 0 or len(edges) == 0:
         return [], []
-
     filt_t = loop_birth + (loop_death - loop_birth) * life_pct
 
     # Parse cocycle edges (each entry is [[i, j], coeff])
@@ -40,18 +39,18 @@ def reconstruct_n_loop_representatives(
         if coeff == 0 or len(verts) != 2:
             continue
         cocycle_edges.append((int(verts[0]), int(verts[1])))
-        if len(cocycle_edges) == n_max_cocycles:
+        if len(cocycle_edges) == n_cocycles_used:
             break
 
-    edge_births = np.asarray(edge_births)
-    mask = edge_births <= filt_t
+    edge_diameters = np.asarray(edge_diameters)
+    mask = edge_diameters <= filt_t
     if not np.any(mask):
         return [], []
-    edges_filt = [e for e, keep in zip(edges, mask) if keep]
-    weights_filt = edge_births[mask].tolist()
+    edges_filt = edges[mask]
+    weights_filt = edge_diameters[mask].tolist()
 
-    sources = [e[0] for e in edges_filt] + [e[0] for e in cocycle_edges]
-    destinations = [e[1] for e in edges_filt] + [e[1] for e in cocycle_edges]
+    sources = edges_filt[:, 0].tolist() + [e[0] for e in cocycle_edges]
+    destinations = edges_filt[:, 1].tolist() + [e[1] for e in cocycle_edges]
     weights = weights_filt + [math.inf] * len(cocycle_edges)
     if len(sources) == 0:
         return [], []
@@ -66,7 +65,7 @@ def reconstruct_n_loop_representatives(
     for _ in range(n_force_deviate):
         paths_this_round: list[list[int]] = []
         for i, j in cocycle_edges:
-            paths = _k_shortest_paths(g, i, j, n_reps_per_loop)
+            paths = _k_shortest_paths(g, i, j, k_yen)
             if not paths:
                 continue
             for path in paths:

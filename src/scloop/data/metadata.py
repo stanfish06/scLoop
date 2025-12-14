@@ -27,5 +27,12 @@ class PreprocessMeta(BaseModel):
     num_vertices: Size_t | None = None
 
 
+# allow downsample as well?
+# TODO: store parameters for bootstraping
+class BootstrapMeta(BaseModel):
+    indices_resample: list[IndexListDownSample] | None = None
+
+
 class ScloopMeta(BaseModel):
     preprocess: PreprocessMeta | None = None
+    bootstrap: BootstrapMeta | None = None

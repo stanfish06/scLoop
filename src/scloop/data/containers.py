@@ -3,20 +3,19 @@ from abc import abstractmethod
 
 import numpy as np
 from anndata import AnnData
-from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 from pydantic.dataclasses import dataclass
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, triu
 
 from ..computing.homology import (
     compute_boundary_matrix_data,
     compute_persistence_diagram_and_cocycles,
-    compute_sparse_pairwise_distance,
 )
 from .analysis_containers import BootstrapAnalysis, HodgeAnalysis
 from .loop_reconstruction import reconstruct_n_loop_representatives
 from .metadata import ScloopMeta
-from .types import Diameter_t, Index_t, IndexListDistMatrix, Size_t
-from .utils import decode_edges, decode_triangles
+from .types import Diameter_t, Index_t, Size_t
+from .utils import decode_edges, decode_triangles, extract_edges_from_coo
 
 
 class BoundaryMatrix(BaseModel):
@@ -79,29 +78,12 @@ class HomologyData:
     """
 
     meta: ScloopMeta
-    persistence_diagram: list[np.ndarray] | None = None
-    loop_representatives: list[list[list[int]]] | None = None
+    persistence_diagram: list | None = None
+    loop_representatives: list[list[list[int]]] = Field(default_factory=list)
     cocycles: list | None = None
-    pairwise_distance_matrix: csr_matrix | None = None
-    selected_vertex_indices: list[int] | None = None
     boundary_matrix_d1: BoundaryMatrixD1 | None = None
     bootstrap_data: BootstrapAnalysis | None = None
     hodge_data: HodgeAnalysis | None = None
-
-    def _compute_sparse_pairwise_distance(
-        self,
-        adata: AnnData,
-        bootstrap: bool = False,
-        thresh: Diameter_t | None = None,
-        **nei_kwargs,
-    ) -> tuple[csr_matrix, IndexListDistMatrix | None]:
-        return compute_sparse_pairwise_distance(
-            adata=adata,
-            meta=self.meta,
-            bootstrap=bootstrap,
-            thresh=thresh,
-            **nei_kwargs,
-        )
 
     def _compute_homology(
         self,
@@ -109,11 +91,11 @@ class HomologyData:
         thresh: Diameter_t | None = None,
         bootstrap: bool = False,
         **nei_kwargs,
-    ) -> None:
+    ) -> csr_matrix:
         (
             persistence_diagram,
             cocycles,
-            vertex_indices,
+            indices_resample,
             sparse_pairwise_distance_matrix,
         ) = compute_persistence_diagram_and_cocycles(
             adata=adata,
@@ -122,10 +104,15 @@ class HomologyData:
             bootstrap=bootstrap,
             **nei_kwargs,
         )
-        self.persistence_diagram = persistence_diagram
-        self.cocycles = cocycles
-        self.pairwise_distance_matrix = sparse_pairwise_distance_matrix
-        self.selected_vertex_indices = vertex_indices
+        if not bootstrap:
+            self.persistence_diagram = persistence_diagram
+            self.cocycles = cocycles
+        else:
+            assert self.bootstrap_data is not None
+            self.bootstrap_data.persistence_diagrams.append(persistence_diagram)  # type: ignore[attr-defined]
+            self.bootstrap_data.cocycles.append(cocycles)  # type: ignore[attr-defined]
+            self.meta.bootstrap.indices_resample.append(indices_resample)  # type: ignore[attr-defined]
+        return sparse_pairwise_distance_matrix
 
     def _compute_boundary_matrix(
         self, adata: AnnData, thresh: Diameter_t | None = None, **nei_kwargs
@@ -137,12 +124,10 @@ class HomologyData:
             edge_ids,
             trig_ids,
             sparse_pairwise_distance_matrix,
-            vertex_indices,
+            _,
         ) = compute_boundary_matrix_data(
             adata=adata, meta=self.meta, thresh=thresh, **nei_kwargs
         )
-        self.pairwise_distance_matrix = sparse_pairwise_distance_matrix
-        self.selected_vertex_indices = vertex_indices
         edge_ids_1d = np.array(edge_ids).flatten()
         # reindex edges (also keep as colllection of triplets, easier to subset later)
         edge_ids_reindex = np.searchsorted(edge_ids_1d, edge_ids)
@@ -167,55 +152,194 @@ class HomologyData:
 
     def _compute_loop_representatives(
         self,
-        loop_idx: int,
-        n: int = 8,
+        pairwise_distance_matrix: csr_matrix,
+        vertex_ids: list[int],  # important, must be the indicies in original data
+        top_k: int = 1,  # top k homology classes to compute representatives
+        bootstrap: bool = False,
+        idx_bootstrap: int = 0,
+        n_reps_per_loop: int = 4,
+        life_pct: float = 0.1,
+        n_cocycles_used: int = 10,
+        n_force_deviate: int = 4,
+        k_yen: int = 8,
+        loop_lower_t_pct: float = 5,
+        loop_upper_t_pct: float = 95,
+    ):
+        if not bootstrap:
+            assert self.persistence_diagram is not None
+            assert self.cocycles is not None
+            loop_births = np.array(self.persistence_diagram[1][0], dtype=np.float32)
+            loop_deaths = np.array(self.persistence_diagram[1][1], dtype=np.float32)
+            cocycles = self.cocycles[1]
+        else:
+            assert self.bootstrap_data is not None
+            assert len(self.bootstrap_data.persistence_diagrams) > idx_bootstrap  # type: ignore[attr-defined]
+            assert len(self.bootstrap_data.cocyles) > idx_bootstrap  # type: ignore[attr-defined]
+            loop_births = np.array(
+                self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][0],
+                dtype=np.float32,
+            )  # type: ignore[attr-defined]
+            loop_deaths = np.array(
+                self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][1],
+                dtype=np.float32,
+            )  # type: ignore[attr-defined]
+            cocycles = self.bootstrap_data.cocyles[idx_bootstrap].cocycles[1]  # type: ignore[attr-defined]
+
+        # get top k homology classes
+        indices_top_k = np.argpartition(loop_deaths - loop_births, -top_k)[-top_k:]
+
+        dm_upper = triu(pairwise_distance_matrix, k=1).tocoo()
+        edges_array, edge_diameters = extract_edges_from_coo(
+            dm_upper.row, dm_upper.col, dm_upper.data
+        )
+
+        if len(edges_array) == 0:
+            return [], []
+
+        # Initialize storage
+        if not bootstrap:
+            if self.loop_representatives is None:
+                self.loop_representatives = []
+            while len(self.loop_representatives) < len(indices_top_k):
+                self.loop_representatives.append([])
+        else:
+            assert self.bootstrap_data is not None
+            bootstrap_data = self.bootstrap_data
+            while len(bootstrap_data.loop_representatives) <= idx_bootstrap:  # type: ignore[attr-defined]
+                bootstrap_data.loop_representatives.append([])  # type: ignore[attr-defined]
+            if len(bootstrap_data.loop_representatives[idx_bootstrap]) < len(
+                indices_top_k
+            ):  # type: ignore[attr-defined]
+                bootstrap_data.loop_representatives[idx_bootstrap] = [
+                    [] for _ in range(len(indices_top_k))
+                ]  # type: ignore[attr-defined]
+
+        for loop_idx, i in enumerate(indices_top_k):
+            loop_birth: float = loop_births[i].item()
+            loop_death: float = loop_deaths[i].item()
+            loops_local, _ = reconstruct_n_loop_representatives(
+                cocycles_dim1=cocycles[i],
+                edges=edges_array,
+                edge_diameters=edge_diameters,
+                loop_birth=loop_birth,
+                loop_death=loop_death,
+                n=n_reps_per_loop,
+                life_pct=life_pct,
+                n_force_deviate=n_force_deviate,
+                k_yen=k_yen,
+                loop_lower_pct=loop_lower_t_pct,
+                loop_upper_pct=loop_upper_t_pct,
+                n_cocycles_used=n_cocycles_used,
+            )
+
+            loops = [[vertex_ids[v] for v in loop] for loop in loops_local]
+
+            if not bootstrap:
+                self.loop_representatives[loop_idx] = loops
+            else:
+                bootstrap_data.loop_representatives[idx_bootstrap][loop_idx] = loops  # type: ignore[attr-defined]
+
+    def _bootstrap(
+        self,
+        adata: AnnData,
+        n: int,
+        thresh: Diameter_t | None = None,
+        noise_scale: float = 1e-3,
+        n_reps_per_loop: int = 8,
         life_pct: float = 0.1,
         n_force_deviate: int = 4,
-        n_reps_per_loop: int = 8,
         loop_lower_pct: float = 5,
         loop_upper_pct: float = 95,
         n_max_cocycles: int = 10,
+        verbose: bool = True,
+        **nei_kwargs,
     ):
-        assert self.persistence_diagram is not None
-        assert self.cocycles is not None
-        assert self.pairwise_distance_matrix is not None
+        pass
+        # from tqdm import tqdm
+        # from sklearn.neighbors import radius_neighbors_graph
 
-        births, deaths = self.persistence_diagram[1]
-        loop_birth = float(births[loop_idx])
-        loop_death = float(deaths[loop_idx])
+        # assert self.meta.preprocess is not None
+        # assert self.boundary_matrix_d1 is not None, "Run find_loops first"
 
-        dm = self.pairwise_distance_matrix.tocoo()
-        edge_weights: dict[tuple[int, int], float] = {}
-        for i, j, w in zip(dm.row.tolist(), dm.col.tolist(), dm.data.tolist()):
-            if i == j:
-                continue
-            key = (i, j) if i < j else (j, i)
-            if key not in edge_weights or w < edge_weights[key]:
-                edge_weights[key] = float(w)
-        if not edge_weights:
-            return [], []
+        # self.bootstrap_data = BootstrapAnalysis(num_bootstraps=n)
 
-        edges = list(edge_weights.keys())
-        edge_births = np.array([edge_weights[e] for e in edges], dtype=float)
+        # emb_key = f"X_{self.meta.preprocess.embedding_method}"
+        # X_orig = adata.obsm[emb_key]
 
-        loops, dists = reconstruct_n_loop_representatives(
-            cocycles_dim1=self.cocycles[1][loop_idx],
-            edges=edges,
-            edge_births=edge_births,
-            loop_birth=loop_birth,
-            loop_death=loop_death,
-            n=n,
-            life_pct=life_pct,
-            n_force_deviate=n_force_deviate,
-            n_reps_per_loop=n_reps_per_loop,
-            loop_lower_pct=loop_lower_pct,
-            loop_upper_pct=loop_upper_pct,
-            n_max_cocycles=n_max_cocycles,
-        )
+        # if self.meta.preprocess.indices_downsample is not None:
+        #     X_orig = X_orig[self.meta.preprocess.indices_downsample]
 
-        if self.loop_representatives is None:
-            self.loop_representatives = []
-        while len(self.loop_representatives) <= loop_idx:
-            self.loop_representatives.append([])
-        self.loop_representatives[loop_idx] = loops
-        return loops, dists
+        # n_cells = X_orig.shape[0]
+
+        # for boot_iter in tqdm(range(n), desc="Bootstrap", disable=not verbose):
+        #     boot_indices = np.random.choice(n_cells, size=n_cells, replace=True)
+        #     X_boot = X_orig[boot_indices] + np.random.normal(
+        #         scale=noise_scale, size=X_orig.shape
+        #     )
+
+        #     sparse_dist_mat = radius_neighbors_graph(
+        #         X=X_boot,
+        #         radius=thresh,
+        #         mode='distance',
+        #         metric='euclidean',
+        #         **nei_kwargs,
+        #     )
+
+        #     from .ripser_lib import ripser
+        #     result = ripser(
+        #         distance_matrix=sparse_dist_mat.tocoo(copy=False),
+        #         modulus=2,
+        #         dim_max=1,
+        #         threshold=thresh,
+        #         do_cocycles=True,
+        #     )
+
+        #     bootstrap_data = self.bootstrap_data
+        #     bootstrap_data.persistence_diagrams.append(result.births_and_deaths_by_dim)
+        #     bootstrap_data.cocycles.append(result.cocycles_by_dim)
+
+        #     births_1, deaths_1 = result.births_and_deaths_by_dim[1]
+        #     if len(births_1) == 0:
+        #         bootstrap_data.loop_representatives.append([])
+        #         continue
+
+        #     n_loops_boot = len(births_1)
+        #     boot_loops_all = []
+
+        #     from scipy.sparse import triu
+        #     dm_upper = triu(sparse_dist_mat, k=1).tocoo()
+
+        #     for loop_idx in range(n_loops_boot):
+        #         loop_birth = float(births_1[loop_idx])
+        #         loop_death = float(deaths_1[loop_idx])
+
+        #         edges_array, edge_births = extract_edges_from_coo(dm_upper.row, dm_upper.col, dm_upper.data)
+
+        #         if len(edges_array) == 0:
+        #             boot_loops_all.append([])
+        #             continue
+
+        #         edges = [(int(e[0]), int(e[1])) for e in edges_array]
+
+        #         loops_local, _ = reconstruct_n_loop_representatives(
+        #             cocycles_dim1=result.cocycles_by_dim[1][loop_idx],
+        #             edges=edges,
+        #             edge_births=edge_births,
+        #             loop_birth=loop_birth,
+        #             loop_death=loop_death,
+        #             n=n_reps_per_loop,
+        #             life_pct=life_pct,
+        #             n_force_deviate=n_force_deviate,
+        #             n_reps_per_loop=n_reps_per_loop,
+        #             loop_lower_pct=loop_lower_pct,
+        #             loop_upper_pct=loop_upper_pct,
+        #             n_max_cocycles=n_max_cocycles,
+        #         )
+
+        #         loops = [
+        #             [boot_indices[v] for v in loop]
+        #             for loop in loops_local
+        #         ]
+        #         boot_loops_all.append(loops)
+
+        #     bootstrap_data.loop_representatives.append(boot_loops_all)

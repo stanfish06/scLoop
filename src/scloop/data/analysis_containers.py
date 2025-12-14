@@ -2,19 +2,16 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 from pydantic import ConfigDict, Field
 from pydantic.dataclasses import dataclass
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class BootstrapAnalysis:
-    loops_eidx_boot: list[list[list[np.ndarray]]] = Field(default_factory=list)
-    persistence_diagram_boot: list[np.ndarray] = Field(default_factory=list)
-    matching_df: list[pd.DataFrame] = Field(default_factory=list)
-    n_booted: int = 0
-    loop_rank: pd.DataFrame = Field(default_factory=pd.DataFrame)
-    parameters: dict = Field(default_factory=dict)
+    num_bootstraps: int = 0
+    persistence_diagrams: list[list] = Field(default_factory=list)
+    cocycles: list[list] = Field(default_factory=list)
+    loop_representatives: list[list[list[list[int]]]] = Field(default_factory=list)
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))

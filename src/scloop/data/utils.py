@@ -1,4 +1,5 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Mchigan)
+import numpy as np
 from numba import jit
 
 from .types import Index_t, Size_t
@@ -65,3 +66,22 @@ def encode_triangles_and_edges(triangles, num_vertices):
             triangle_idx_encode(i=i0, j=i1, k=i2, num_vertices=num_vertices)
         )
     return edge_ids, trig_ids
+
+
+@jit(nopython=True)
+def extract_edges_from_coo(rows, cols, data):
+    n = len(rows)
+    edges = np.empty((n, 2), dtype=np.int64)
+    weights = np.empty(n, dtype=np.float64)
+
+    count = 0
+    for k in range(n):
+        i, j, w = rows[k], cols[k], data[k]
+        if i >= j:
+            continue
+        edges[count, 0] = i
+        edges[count, 1] = j
+        weights[count] = w
+        count += 1
+
+    return edges[:count], weights[:count]
