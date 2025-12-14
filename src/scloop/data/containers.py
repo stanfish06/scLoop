@@ -13,7 +13,7 @@ from ..computing.homology import (
 )
 from .analysis_containers import BootstrapAnalysis, HodgeAnalysis
 from .loop_reconstruction import reconstruct_n_loop_representatives
-from .metadata import ScloopMeta
+from .metadata import BootstrapMeta, ScloopMeta
 from tqdm import tqdm
 from .types import Diameter_t, Index_t, IndexListDownSample, Size_t
 from .utils import decode_edges, decode_triangles, extract_edges_from_coo
@@ -72,7 +72,7 @@ class BoundaryMatrixD1(BoundaryMatrix):
         return decode_triangles(np.array(self.col_simplex_ids), self.num_vertices)
 
 
-@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
+@dataclass
 class HomologyData:
     """
     store core homology data and associated analysis data
@@ -196,7 +196,7 @@ class HomologyData:
                 self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][1],
                 dtype=np.float32,
             )  # type: ignore[attr-defined]
-            cocycles = self.bootstrap_data.cocycles[idx_bootstrap].cocycles[1]  # type: ignore[attr-defined]
+            cocycles = self.bootstrap_data.cocycles[idx_bootstrap][1]  # type: ignore[attr-defined]
             vertex_ids: IndexListDownSample = self.meta.bootstrap.indices_resample[idx_bootstrap]
 
         if loop_births.size == 0:
@@ -277,6 +277,15 @@ class HomologyData:
         verbose: bool = True,
         **nei_kwargs,
     ) -> None:
+        self.bootstrap_data = BootstrapAnalysis(num_bootstraps=n_bootstrap)
+        if self.meta.bootstrap is None:
+            self.meta.bootstrap = BootstrapMeta(indices_resample=[])
+        else:
+            if self.meta.bootstrap.indices_resample is None:
+                self.meta.bootstrap.indices_resample = []
+            else:
+                self.meta.bootstrap.indices_resample.clear()
+
         for idx_bootstrap in range(n_bootstrap):
             pairwise_distance_matrix = self._compute_homology(
                 adata=adata,
