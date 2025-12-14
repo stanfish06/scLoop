@@ -20,6 +20,8 @@ def compute_sparse_pairwise_distance(
     thresh: Diameter_t | None = None,
     **nei_kwargs,
 ) -> tuple[csr_matrix, IndexListDistMatrix | None]:
+    # important, default is binary graph
+    nei_kwargs.setdefault("mode", "distance")
     assert meta.preprocess is not None
     assert meta.preprocess.embedding_method is not None
     emb = adata.obsm[f"X_{meta.preprocess.embedding_method}"]

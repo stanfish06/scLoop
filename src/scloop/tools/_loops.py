@@ -18,52 +18,21 @@ def _get_scloop_meta(adata: AnnData) -> ScloopMeta:
         meta = ScloopMeta(**meta)
     return meta
 
-
-def _select_loop_indices(persistence_diagram: Sequence[np.ndarray], top_k: int | None):
-    births, deaths = persistence_diagram
-    pers = np.array(deaths) - np.array(births)
-    if top_k is None or top_k >= len(pers):
-        return list(range(len(pers)))
-    return list(np.argsort(pers)[::-1][:top_k])
-
-
 def find_loops(
     adata: AnnData,
     *,
     thresh: float | None = None,
     top_k: int | None = None,
-    n_reps_per_loop: int = 8,
-    life_pct: float = 0.1,
-    n_force_deviate: int = 4,
-    loop_lower_pct: float = 5.0,
-    loop_upper_pct: float = 95.0,
-    n_max_cocycles: int = 10,
 ) -> None:
     meta = _get_scloop_meta(adata)
     hd: HomologyData = HomologyData(meta=meta)  # type: ignore[call-arg]
 
-    hd._compute_homology(adata=adata, thresh=thresh)  # type: ignore[attr-defined]
+    sparse_dist_mat = hd._compute_homology(adata=adata, thresh=thresh)  # type: ignore[attr-defined]
     hd._compute_boundary_matrix(adata=adata, thresh=thresh)  # type: ignore[attr-defined]
 
-    sparse_dist_mat, vertex_indices = hd._compute_sparse_pairwise_distance(  # type: ignore[attr-defined]
-        adata=adata,
-        bootstrap=False,
-        thresh=thresh,
+    hd._compute_loop_representatives(  # type: ignore[attr-defined]
+        pairwise_distance_matrix=sparse_dist_mat,
+        vertex_ids=meta.preprocess.indices_downsample,
+        top_k=top_k
     )
-
-    loop_indices = _select_loop_indices(hd.persistence_diagram[1], top_k)  # type: ignore[attr-defined]
-    for idx in loop_indices:
-        hd._compute_loop_representatives(  # type: ignore[attr-defined]
-            loop_idx=idx,
-            pairwise_distance_matrix=sparse_dist_mat,
-            vertex_indices=None,
-            n=n_reps_per_loop,
-            life_pct=life_pct,
-            n_force_deviate=n_force_deviate,
-            n_reps_per_loop=n_reps_per_loop,
-            loop_lower_pct=loop_lower_pct,
-            loop_upper_pct=loop_upper_pct,
-            n_max_cocycles=n_max_cocycles,
-        )
-
     adata.uns["scloop"] = hd

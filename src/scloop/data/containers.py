@@ -196,7 +196,6 @@ class HomologyData:
         if len(edges_array) == 0:
             return [], []
 
-        # Initialize storage
         if not bootstrap:
             if self.loop_representatives is None:
                 self.loop_representatives = []
