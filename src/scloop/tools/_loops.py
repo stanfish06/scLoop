@@ -27,6 +27,7 @@ def find_loops(
     n_candidates: Annotated[int, Field(ge=1)] = 1,
     n_bootstrap: Annotated[int, Field(ge=0)] = 10,
     n_check_per_candidate: Annotated[int, Field(ge=1)] = 1,
+    n_max_workers: Annotated[int, Field(ge=1)] = 8,
     verbose: bool = False,
 ) -> None:
     meta = _get_scloop_meta(adata)
@@ -44,6 +45,7 @@ def find_loops(
         n_bootstrap=n_bootstrap,
         thresh=threshold_homology,
         top_k=n_candidates * n_check_per_candidate,
+        n_max_workers=n_max_workers,
         verbose=verbose,
     )
     adata.uns["scloop"] = hd

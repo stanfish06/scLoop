@@ -6,9 +6,17 @@ import numpy as np
 from anndata import AnnData
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from pydantic.dataclasses import dataclass
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 from scipy.sparse import csr_matrix, triu
 from scipy.spatial.distance import directed_hausdorff
-from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
 
 from ..computing.homology import (
     compute_boundary_matrix_data,
@@ -27,7 +35,6 @@ from .types import Diameter_t, Index_t, IndexListDownSample, LoopDistMethod, Siz
 from .utils import (
     decode_edges,
     decode_triangles,
-    edge_ids_to_rows,
     extract_edges_from_coo,
     loop_vertices_to_edge_ids,
     nearest_neighbor_per_row,
@@ -440,7 +447,7 @@ class HomologyData:
             BarColumn(),
             TaskProgressColumn(),
             TimeRemainingColumn(),
-            TimeElapsedColumn()
+            TimeElapsedColumn(),
         )
 
         with progress_main:
@@ -526,18 +533,21 @@ class HomologyData:
                     for task in as_completed(tasks):
                         si, tj, geo_dist, neighbor_rank = tasks[task]
                         _, _, is_homologically_equivalent = task.result()
-                        if self.bootstrap_data is not None and is_homologically_equivalent:
+                        if (
+                            self.bootstrap_data is not None
+                            and is_homologically_equivalent
+                        ):
                             self._ensure_loop_tracks()
                             track = self.bootstrap_data.loop_tracks[si]
                             birth_boot = float(
-                                self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][
-                                    0
-                                ][tj]
+                                self.bootstrap_data.persistence_diagrams[idx_bootstrap][
+                                    1
+                                ][0][tj]
                             )
                             death_boot = float(
-                                self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][
+                                self.bootstrap_data.persistence_diagrams[idx_bootstrap][
                                     1
-                                ][tj]
+                                ][1][tj]
                             )
                             track.matches.append(
                                 LoopMatch(
