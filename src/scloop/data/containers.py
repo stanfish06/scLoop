@@ -14,10 +14,15 @@ from ..computing.homology import (
     compute_loop_homological_equivalence,
     compute_persistence_diagram_and_cocycles,
 )
-from .analysis_containers import BootstrapAnalysis, HodgeAnalysis
+from .analysis_containers import (
+    BootstrapAnalysis,
+    HodgeAnalysis,
+    LoopMatch,
+    LoopTrack,
+)
 from .loop_reconstruction import reconstruct_n_loop_representatives
 from .metadata import BootstrapMeta, ScloopMeta
-from .types import Diameter_t, Index_t, IndexListDownSample, Size_t
+from .types import Diameter_t, Index_t, IndexListDownSample, LoopDistMethod, Size_t
 from .utils import (
     decode_edges,
     decode_triangles,
@@ -239,7 +244,6 @@ class HomologyData:
             return [], []
         top_k = min(top_k, loop_births.size)
 
-        # get top k homology classes
         indices_top_k = np.argpartition(loop_deaths - loop_births, -top_k)[-top_k:]
 
         dm_upper = triu(pairwise_distance_matrix, k=1).tocoo()
@@ -298,9 +302,11 @@ class HomologyData:
         source_class_idx: int,
         target_class_idx: int,
         idx_bootstrap: int = 0,
+        method: LoopDistMethod = "hausdorff",
     ) -> tuple[int, int, float]:
         assert self.loop_representatives is not None
         assert self.bootstrap_data is not None
+        assert self.meta.preprocess is not None
         assert self.meta.preprocess.embedding_method is not None
 
         if idx_bootstrap >= len(self.bootstrap_data.loop_representatives):
@@ -334,7 +340,7 @@ class HomologyData:
                     distances.append(np.nan)
 
         mean_distance = np.nanmean(distances) if distances else np.nan
-        return (source_class_idx, target_class_idx, mean_distance)
+        return (source_class_idx, target_class_idx, float(mean_distance))
 
     def _assess_bootstrap_homology_equivalence(
         self,
@@ -372,6 +378,26 @@ class HomologyData:
         )
         return (source_class_idx, target_class_idx, any(r == 0 for r in results))
 
+    def _ensure_loop_tracks(self) -> None:
+        if self.bootstrap_data is None:
+            return
+        if self.bootstrap_data.loop_tracks:
+            return
+        if self.persistence_diagram is None or self.loop_representatives is None:
+            return
+        loop_births = np.array(self.persistence_diagram[1][0], dtype=np.float32)
+        loop_deaths = np.array(self.persistence_diagram[1][1], dtype=np.float32)
+        top_k = len(self.loop_representatives)
+        if top_k == 0:
+            return
+        indices_top_k = np.argpartition(loop_deaths - loop_births, -top_k)[-top_k:]
+        for track_idx, loop_idx in enumerate(indices_top_k):
+            birth = float(loop_births[loop_idx])
+            death = float(loop_deaths[loop_idx])
+            self.bootstrap_data.loop_tracks[track_idx] = LoopTrack(
+                source_class_idx=track_idx, birth_root=birth, death_root=death
+            )
+
     def _bootstrap(
         self,
         adata: AnnData,
@@ -392,7 +418,7 @@ class HomologyData:
         verbose: bool = True,
         **nei_kwargs,
     ) -> None:
-        self.bootstrap_data = BootstrapAnalysis(num_bootstraps=n_bootstrap)
+        self.bootstrap_data = BootstrapAnalysis()
         if self.meta.bootstrap is None:
             self.meta.bootstrap = BootstrapMeta(indices_resample=[])
         else:
@@ -446,6 +472,7 @@ class HomologyData:
                     for j in range(n_bootstrap_loop_classes):
                         task = executor.submit(
                             self._assess_bootstrap_geometric_equivalence,
+                            adata,
                             i,
                             j,
                             idx_bootstrap,
@@ -459,7 +486,6 @@ class HomologyData:
             neighbor_indices, neighbor_distances = nearest_neighbor_per_row(
                 pairwise_result_matrix, k_neighbors_check_equivalence
             )
-
             """
             ========= homological matching =========
             - gf2 regression
@@ -478,10 +504,32 @@ class HomologyData:
                                 idx_bootstrap,
                                 n_pairs_check_equivalence,
                             )
-                            tasks[task] = (si, tj, neighbor_distances[si, k])
+                            tasks[task] = (si, tj, neighbor_distances[si, k], k)
 
                 for task in as_completed(tasks):
-                    si, tj, geom_dist = tasks[task]
-                    _, _, is_equivalent = task.result()
-                    if is_equivalent:
-                        pass
+                    si, tj, geo_dist, neighbor_rank = tasks[task]
+                    _, _, is_homologically_equivalent = task.result()
+                    if self.bootstrap_data is not None and is_homologically_equivalent:
+                        self._ensure_loop_tracks()
+                        track = self.bootstrap_data.loop_tracks.get(si)
+                        birth_boot = float(
+                            self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][
+                                0
+                            ][tj]
+                        )
+                        death_boot = float(
+                            self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][
+                                1
+                            ][tj]
+                        )
+                        track.matches.append(
+                            LoopMatch(
+                                idx_bootstrap=idx_bootstrap,
+                                birth_bootstrap=birth_boot,
+                                death_bootstrap=death_boot,
+                                target_class_idx=tj,
+                                geometric_distance=float(geo_dist),
+                                neighbor_rank=neighbor_rank,
+                            )
+                        )
+            self.bootstrap_data.num_bootstraps += 1

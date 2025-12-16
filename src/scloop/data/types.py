@@ -6,6 +6,7 @@ from pydantic import Field
 FeatureSelectionMethod = Literal["hvg", "delve", "none"]
 EmbeddingMethod = Literal["pca", "diffmap", "scvi"]
 EmbeddingNeighbors = Literal["pca", "scvi"]
+LoopDistMethod = Literal["hausdorff", "frechet"]
 
 Index_t = Annotated[int, Field(ge=0)]
 Size_t = Annotated[int, Field(ge=0)]
