@@ -387,8 +387,6 @@ class HomologyData:
     def _ensure_loop_tracks(self) -> None:
         if self.bootstrap_data is None:
             return
-        if self.bootstrap_data.loop_tracks:
-            return
         if self.persistence_diagram is None or self.loop_representatives is None:
             return
         loop_births = np.array(self.persistence_diagram[1][0], dtype=np.float32)
@@ -397,12 +395,13 @@ class HomologyData:
         if top_k == 0:
             return
         indices_top_k = np.argpartition(loop_deaths - loop_births, -top_k)[-top_k:]
-        for track_idx, loop_idx in enumerate(indices_top_k):
+        for loop_idx in indices_top_k:
             birth = float(loop_births[loop_idx])
             death = float(loop_deaths[loop_idx])
-            self.bootstrap_data.loop_tracks[track_idx] = LoopTrack(
-                source_class_idx=track_idx, birth_root=birth, death_root=death
-            )
+            if loop_idx not in self.bootstrap_data.loop_tracks:
+                self.bootstrap_data.loop_tracks[loop_idx] = LoopTrack(
+                    source_class_idx=loop_idx, birth_root=birth, death_root=death
+                )
 
     def _bootstrap(
         self,
@@ -517,7 +516,7 @@ class HomologyData:
                     _, _, is_homologically_equivalent = task.result()
                     if self.bootstrap_data is not None and is_homologically_equivalent:
                         self._ensure_loop_tracks()
-                        track = self.bootstrap_data.loop_tracks.get(si)
+                        track = self.bootstrap_data.loop_tracks[si]
                         birth_boot = float(
                             self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][
                                 0

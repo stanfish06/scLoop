@@ -39,11 +39,11 @@ def find_loops(
         top_k=n_candidates,
     )
 
-    # hd._bootstrap(
-    #     adata=adata,
-    #     n_bootstrap=n_bootstrap,
-    #     thresh=threshold_homology,
-    #     top_k=n_candidates * n_check_per_candidate,
-    #     verbose=verbose,
-    # )
+    hd._bootstrap(
+        adata=adata,
+        n_bootstrap=n_bootstrap,
+        thresh=threshold_homology,
+        top_k=n_candidates * n_check_per_candidate,
+        verbose=verbose,
+    )
     adata.uns["scloop"] = hd
