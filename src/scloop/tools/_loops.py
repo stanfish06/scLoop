@@ -1,14 +1,16 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Michigan)
 from __future__ import annotations
 
+from typing import Annotated
+
 from anndata import AnnData
+from pydantic import Field
 
 from ..data.containers import HomologyData
 from ..data.metadata import ScloopMeta
-from typing import Annotated
-from pydantic import Field
 
 __all__ = ["find_loops"]
+
 
 def _get_scloop_meta(adata: AnnData) -> ScloopMeta:
     if "scloop_meta" not in adata.uns:
@@ -17,6 +19,7 @@ def _get_scloop_meta(adata: AnnData) -> ScloopMeta:
     if isinstance(meta, dict):
         meta = ScloopMeta(**meta)
     return meta
+
 
 def find_loops(
     adata: AnnData,
@@ -36,11 +39,11 @@ def find_loops(
         top_k=n_candidates,
     )
 
-    hd._bootstrap(
-        adata=adata,
-        n_bootstrap=n_bootstrap,
-        thresh=threshold_homology,
-        top_k=n_candidates * n_check_per_candidate,
-        verbose=verbose
-    )
+    # hd._bootstrap(
+    #     adata=adata,
+    #     n_bootstrap=n_bootstrap,
+    #     thresh=threshold_homology,
+    #     top_k=n_candidates * n_check_per_candidate,
+    #     verbose=verbose,
+    # )
     adata.uns["scloop"] = hd

@@ -43,16 +43,20 @@ class BoundaryMatrix(BaseModel, ABC):
     col_simplex_diams: list[Diameter_t]
 
     @field_validator(
-        "row_simplex_ids", "col_simplex_ids", "col_simplex_diams", mode="before"
+        "row_simplex_ids",
+        "row_simplex_diams",
+        "col_simplex_ids",
+        "col_simplex_diams",
+        mode="before",
     )
     @classmethod
     def validate_fields(cls, v: list[Index_t], info: ValidationInfo):
         shape = info.data.get("shape")
         assert shape
-        if info.field_name == "row_simplex_ids":
+        if info.field_name in ["row_simplex_ids", "row_simplex_diams"]:
             if len(v) != shape[0]:
                 raise ValueError(
-                    "Length of row ids does not match the number of rows of the matrix"
+                    f"Length of {info.field_name} does not match the number of rows of the matrix"
                 )
         elif info.field_name in ["col_simplex_ids", "col_simplex_diams"]:
             if len(v) != shape[1]:
@@ -172,10 +176,12 @@ class HomologyData:
         self.boundary_matrix_d1 = BoundaryMatrixD1(
             num_vertices=self.meta.preprocess.num_vertices,
             data=(
-                edge_ids_reindex.tolist(),
+                edge_ids_reindex.flatten().tolist(),
                 np.repeat(
                     np.expand_dims(np.arange(edge_ids_reindex.shape[0]), 1), 3, axis=1
-                ).tolist(),
+                )
+                .flatten()
+                .tolist(),
             ),
             shape=(len(edge_ids_1d), len(trig_ids)),
             row_simplex_ids=edge_ids_1d.tolist(),
