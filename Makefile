@@ -21,6 +21,9 @@ build: build-m4ri
 	CPLUS_INCLUDE_PATH=$(PROJECT_ROOT)/src/scloop/data:$(DM_PREFIX) \
 		uv build
 
+sync-fresh: build-m4ri
+	CPLUS_INCLUDE_PATH=$(PROJECT_ROOT)/src/scloop/data:$(DM_PREFIX)/discrete-frechet-distance uv sync
+
 sync: clean build-m4ri
 	python setup.py build_ext --inplace
 	CPLUS_INCLUDE_PATH=$(PROJECT_ROOT)/src/scloop/data:$(DM_PREFIX)/discrete-frechet-distance uv sync

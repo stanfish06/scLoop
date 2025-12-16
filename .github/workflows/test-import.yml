@@ -27,7 +27,7 @@ jobs:
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
         make build
-        make sync
+        make sync-fresh
 
     - name: Test import
       run: |
