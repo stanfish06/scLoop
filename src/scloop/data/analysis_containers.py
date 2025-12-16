@@ -45,21 +45,21 @@ class BootstrapAnalysis:
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class HodgeAnalysis:
     loop_id: str
-    eigenvalues: np.ndarray = Field(default_factory=lambda: np.array([]))
-    eigenvectors: np.ndarray = Field(default_factory=lambda: np.array([]))
+    eigenvalues: np.ndarray | None = None
+    eigenvectors: np.ndarray | None = None
     loops_edges_embedding: list[np.ndarray] = Field(default_factory=list)
     parameters: dict = Field(default_factory=dict)
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class PseudotimeAnalysis:
-    edge_pseudotime_deltas: np.ndarray = Field(default_factory=lambda: np.array([]))
+    edge_pseudotime_deltas: np.ndarray | None = None
     pseudotime_source: str = ""
     parameters: dict = Field(default_factory=dict)
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class VelocityAnalysis:
-    edge_velocity_deltas: np.ndarray = Field(default_factory=lambda: np.array([]))
+    edge_velocity_deltas: np.ndarray | None = None
     velocity_source: str = ""
     parameters: dict = Field(default_factory=dict)

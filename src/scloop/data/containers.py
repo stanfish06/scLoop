@@ -503,50 +503,50 @@ class HomologyData:
                 neighbor_indices, neighbor_distances = nearest_neighbor_per_row(
                     pairwise_result_matrix, k_neighbors_check_equivalence
                 )
-            """
-            ========= homological matching =========
-            - gf2 regression
-            ========================================
-            """
-            with ThreadPoolExecutor(max_workers=n_max_workers) as executor:
-                tasks = {}
-                for si in range(n_original_loop_classes):
-                    for k in range(k_neighbors_check_equivalence):
-                        tj = neighbor_indices[si, k]
-                        if tj >= 0:
-                            task = executor.submit(
-                                self._assess_bootstrap_homology_equivalence,
-                                si,
-                                tj,
-                                idx_bootstrap,
-                                n_pairs_check_equivalence,
-                            )
-                            tasks[task] = (si, tj, neighbor_distances[si, k], k)
+                """
+                ========= homological matching =========
+                - gf2 regression
+                ========================================
+                """
+                with ThreadPoolExecutor(max_workers=n_max_workers) as executor:
+                    tasks = {}
+                    for si in range(n_original_loop_classes):
+                        for k in range(k_neighbors_check_equivalence):
+                            tj = neighbor_indices[si, k]
+                            if tj >= 0:
+                                task = executor.submit(
+                                    self._assess_bootstrap_homology_equivalence,
+                                    si,
+                                    tj,
+                                    idx_bootstrap,
+                                    n_pairs_check_equivalence,
+                                )
+                                tasks[task] = (si, tj, neighbor_distances[si, k], k)
 
-                for task in as_completed(tasks):
-                    si, tj, geo_dist, neighbor_rank = tasks[task]
-                    _, _, is_homologically_equivalent = task.result()
-                    if self.bootstrap_data is not None and is_homologically_equivalent:
-                        self._ensure_loop_tracks()
-                        track = self.bootstrap_data.loop_tracks[si]
-                        birth_boot = float(
-                            self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][
-                                0
-                            ][tj]
-                        )
-                        death_boot = float(
-                            self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][
-                                1
-                            ][tj]
-                        )
-                        track.matches.append(
-                            LoopMatch(
-                                idx_bootstrap=idx_bootstrap,
-                                birth_bootstrap=birth_boot,
-                                death_bootstrap=death_boot,
-                                target_class_idx=tj,
-                                geometric_distance=float(geo_dist),
-                                neighbor_rank=neighbor_rank,
+                    for task in as_completed(tasks):
+                        si, tj, geo_dist, neighbor_rank = tasks[task]
+                        _, _, is_homologically_equivalent = task.result()
+                        if self.bootstrap_data is not None and is_homologically_equivalent:
+                            self._ensure_loop_tracks()
+                            track = self.bootstrap_data.loop_tracks[si]
+                            birth_boot = float(
+                                self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][
+                                    0
+                                ][tj]
                             )
-                        )
-            self.bootstrap_data.num_bootstraps += 1
+                            death_boot = float(
+                                self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][
+                                    1
+                                ][tj]
+                            )
+                            track.matches.append(
+                                LoopMatch(
+                                    idx_bootstrap=idx_bootstrap,
+                                    birth_bootstrap=birth_boot,
+                                    death_bootstrap=death_boot,
+                                    target_class_idx=tj,
+                                    geometric_distance=float(geo_dist),
+                                    neighbor_rank=neighbor_rank,
+                                )
+                            )
+                self.bootstrap_data.num_bootstraps += 1

@@ -16,8 +16,8 @@ cdef extern from "ripser.hpp":
     cdef cppclass boundaryMatrixResults:
         vector[vector[index_t]] triangle_vertices
         vector[value_t] triangle_diameters
-    cdef ripserResults rips_dm_sparse(int* I, int* J, float* V, int NEdges, int N, int modulus, int dim_max, float threshold, int do_cocycles)
-    cdef boundaryMatrixResults get_boundary_matrix_sparse(int* I, int* J, float* V, int NEdges, int N, float threshold)
+    cdef ripserResults rips_dm_sparse(int* I, int* J, float* V, int NEdges, int N, int modulus, int dim_max, float threshold, int do_cocycles) nogil
+    cdef boundaryMatrixResults get_boundary_matrix_sparse(int* I, int* J, float* V, int NEdges, int N, float threshold) nogil
 
 @dataclasses.dataclass
 class RipserResults:
@@ -117,7 +117,10 @@ def ripser(
 
     cdef int NEdges = distance_matrix.nnz
     cdef int N = distance_matrix.shape[0]
-    cdef ripserResults res = rips_dm_sparse(I, J, V, NEdges, N, modulus, dim_max, threshold, int(do_cocycles))
+    cdef int do_cocycles_int = int(do_cocycles)
+    cdef ripserResults res
+    with nogil:
+        res = rips_dm_sparse(I, J, V, NEdges, N, modulus, dim_max, threshold, do_cocycles_int)
     cdef list persistence_diagrams = [converting_birth_death_to_list(res.births_and_deaths_by_dim, i) for i in range(dim_max + 1)]
     cdef list cocycle_representatives = [converting_cocycles_to_list(res.cocycles_by_dim, i) for i in range(dim_max + 1)]
     return RipserResults(
@@ -151,7 +154,9 @@ def get_boundary_matrix(
     cdef int NEdges = distance_matrix.nnz
     cdef int N = distance_matrix.shape[0]
 
-    cdef boundaryMatrixResults res = get_boundary_matrix_sparse(I, J, V, NEdges, N, threshold)
+    cdef boundaryMatrixResults res
+    with nogil:
+        res = get_boundary_matrix_sparse(I, J, V, NEdges, N, threshold)
 
     cdef list triangle_vertices = []
     cdef list triangle_diameters = []
