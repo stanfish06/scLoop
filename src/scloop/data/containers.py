@@ -1,5 +1,5 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Michigan)
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 
 import numpy as np
 from anndata import AnnData
@@ -25,7 +25,7 @@ from .utils import (
 )
 
 
-class BoundaryMatrix(BaseModel):
+class BoundaryMatrix(BaseModel, ABC):
     num_vertices: Size_t
     data: tuple[list, list]  # in coo format (row indices, col indices) of ones
     shape: tuple[Size_t, Size_t]
@@ -289,7 +289,7 @@ class HomologyData:
             else:
                 bootstrap_data.loop_representatives[idx_bootstrap][loop_idx] = loops  # type: ignore[attr-defined]
 
-    def assess_bootstrap_homology_equivalence(
+    def _assess_bootstrap_homology_equivalence(
         self,
         source_class_idx: int,
         target_class_idx: int | None = None,
@@ -339,6 +339,7 @@ class HomologyData:
         k_yen: int = 8,
         loop_lower_t_pct: float = 5,
         loop_upper_t_pct: float = 95,
+        n_pairs_check_equivalence: int = 4,
         verbose: bool = True,
         **nei_kwargs,
     ) -> None:
@@ -371,4 +372,26 @@ class HomologyData:
                 k_yen=k_yen,
                 loop_lower_t_pct=loop_lower_t_pct,
                 loop_upper_t_pct=loop_upper_t_pct,
+            )
+            """
+            ========= geometric matching =========
+            - find loop neighbors using frechet
+            - reduce computation load
+            ======================================
+            """
+            # n_source_
+            # for i in range(len(self.loop_representatives)):
+            #     for j in range(len(self.bootstrap_data)):
+                    
+
+            """
+            ========= homological matching =========
+            - gf2 regression
+            ========================================
+            """
+            self._assess_bootstrap_homology_equivalence(
+                source_class_idx=0,
+                target_class_idx=0,
+                idx_bootstrap=idx_bootstrap,
+                n_pairs_check=n_pairs_check_equivalence,
             )
