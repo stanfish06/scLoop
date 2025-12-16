@@ -5,7 +5,10 @@ from anndata import AnnData
 
 from ..data.containers import HomologyData
 from ..data.metadata import ScloopMeta
+from typing import Annotated
+from pydantic import Field
 
+__all__ = ["find_loops"]
 
 def _get_scloop_meta(adata: AnnData) -> ScloopMeta:
     if "scloop_meta" not in adata.uns:
@@ -15,22 +18,29 @@ def _get_scloop_meta(adata: AnnData) -> ScloopMeta:
         meta = ScloopMeta(**meta)
     return meta
 
-
 def find_loops(
     adata: AnnData,
-    *,
-    thresh: float | None = None,
-    top_k: int | None = None,
+    threshold_homology: Annotated[float, Field(ge=0)] | None = None,
+    n_candidates: Annotated[int, Field(ge=1)] = 1,
+    n_bootstrap: Annotated[int, Field(ge=0)] = 10,
+    n_check_per_candidate: Annotated[int, Field(ge=1)] = 1,
+    verbose: bool = False,
 ) -> None:
     meta = _get_scloop_meta(adata)
-    hd: HomologyData = HomologyData(meta=meta)  # type: ignore[call-arg]
+    hd: HomologyData = HomologyData(meta=meta)
 
-    sparse_dist_mat = hd._compute_homology(adata=adata, thresh=thresh)  # type: ignore[attr-defined]
-    hd._compute_boundary_matrix(adata=adata, thresh=thresh)  # type: ignore[attr-defined]
-
-    top_k_val = top_k if top_k is not None else 0
-    hd._compute_loop_representatives(  # type: ignore[attr-defined]
+    sparse_dist_mat = hd._compute_homology(adata=adata, thresh=threshold_homology)
+    hd._compute_boundary_matrix(adata=adata, thresh=threshold_homology)
+    hd._compute_loop_representatives(
         pairwise_distance_matrix=sparse_dist_mat,
-        top_k=top_k_val,
+        top_k=n_candidates,
+    )
+
+    hd._bootstrap(
+        adata=adata,
+        n_bootstrap=n_bootstrap,
+        thresh=threshold_homology,
+        top_k=n_candidates * n_check_per_candidate,
+        verbose=verbose
     )
     adata.uns["scloop"] = hd

@@ -192,11 +192,11 @@ class HomologyData:
         idx_bootstrap: int = 0,
         n_reps_per_loop: int = 4,
         life_pct: float = 0.1,
-        n_cocycles_used: int = 10,
+        n_cocycles_used: int = 3,
         n_force_deviate: int = 4,
         k_yen: int = 8,
-        loop_lower_t_pct: float = 5,
-        loop_upper_t_pct: float = 95,
+        loop_lower_t_pct: float = 2.5,
+        loop_upper_t_pct: float = 97.5,
     ):
         assert pairwise_distance_matrix.shape is not None
         assert self.meta.preprocess is not None
@@ -405,17 +405,17 @@ class HomologyData:
         thresh: Diameter_t | None = None,
         top_k: int = 1,
         noise_scale: float = 1e-3,
-        n_reps_per_loop: int = 8,
+        n_reps_per_loop: int = 4,
         life_pct: float = 0.1,
-        n_cocycles_used: int = 10,
+        n_cocycles_used: int = 3,
         n_force_deviate: int = 4,
         k_yen: int = 8,
-        loop_lower_t_pct: float = 5,
-        loop_upper_t_pct: float = 95,
+        loop_lower_t_pct: float = 2.5,
+        loop_upper_t_pct: float = 97.5,
         n_pairs_check_equivalence: int = 4,
         n_max_workers: int = 4,
         k_neighbors_check_equivalence: int = 3,
-        verbose: bool = True,
+        verbose: bool = False,
         **nei_kwargs,
     ) -> None:
         self.bootstrap_data = BootstrapAnalysis()
