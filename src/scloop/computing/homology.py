@@ -48,7 +48,8 @@ def compute_sparse_pairwise_distance(
             len(selected_indices), size=len(selected_indices), replace=True
         ).tolist()
         boot_idx = [selected_indices[i] for i in sample_idx]
-        X = X[sample_idx] + np.random.normal(scale=noise_scale, size=X.shape)
+        std_X = np.std(X, axis=0)
+        X = X[sample_idx] + np.random.normal(scale=std_X * noise_scale, size=X.shape)
     else:
         boot_idx = selected_indices
     return (

@@ -1,11 +1,14 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Michigan)
+import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 from anndata import AnnData
+from loguru import logger
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from pydantic.dataclasses import dataclass
+from rich.console import Console
 from rich.progress import (
     BarColumn,
     Progress,
@@ -441,6 +444,7 @@ class HomologyData:
             else:
                 self.meta.bootstrap.indices_resample.clear()
 
+        console = Console()
         progress_main = Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -448,10 +452,24 @@ class HomologyData:
             TaskProgressColumn(),
             TimeRemainingColumn(),
             TimeElapsedColumn(),
+            console=console,
+        )
+        logger.remove()
+        # https://github.com/Delgan/loguru/issues/444
+        logger.add(
+            lambda s: console.print(s, end=""),
+            colorize=False,
+            level="TRACE",
+            format="<green>{time:YYYY/MM/DD HH:mm:ss}</green> | {level.icon} - <level>{message}</level>",
         )
 
         with progress_main:
             for idx_bootstrap in progress_main.track(range(n_bootstrap)):
+                start_time = time.perf_counter()
+                if verbose:
+                    logger.info(f"Start round {idx_bootstrap + 1}/{n_bootstrap}")
+                if verbose:
+                    logger.info("Compute bootstrapped homology")
                 pairwise_distance_matrix = self._compute_homology(
                     adata=adata,
                     thresh=thresh,
@@ -459,6 +477,8 @@ class HomologyData:
                     noise_scale=noise_scale,
                     **nei_kwargs,
                 )
+                if verbose:
+                    logger.info("Find loops in the bootstrapped data")
                 self._compute_loop_representatives(
                     pairwise_distance_matrix=pairwise_distance_matrix,
                     idx_bootstrap=idx_bootstrap,
@@ -472,6 +492,8 @@ class HomologyData:
                     loop_lower_t_pct=loop_lower_t_pct,
                     loop_upper_t_pct=loop_upper_t_pct,
                 )
+                if verbose:
+                    logger.info("Match bootstrapped loops to the original loops")
                 """
                 ============= geometric matching =============
                 - find loop neighbors using hausdorff/frechet
@@ -560,3 +582,9 @@ class HomologyData:
                                 )
                             )
                 self.bootstrap_data.num_bootstraps += 1
+                end_time = time.perf_counter()
+                if verbose:
+                    time_elapsed = end_time - start_time
+                    logger.success(
+                        f"Round finished in {int(time_elapsed // 3600)}h {int(time_elapsed % 3600 // 60)}m {int(time_elapsed % 60)}s"
+                    )
