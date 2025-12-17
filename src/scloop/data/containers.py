@@ -160,9 +160,13 @@ class HomologyData:
             self.cocycles = cocycles
         else:
             assert self.bootstrap_data is not None
-            self.bootstrap_data.persistence_diagrams.append(persistence_diagram)  # type: ignore[attr-defined]
-            self.bootstrap_data.cocycles.append(cocycles)  # type: ignore[attr-defined]
-            self.meta.bootstrap.indices_resample.append(indices_resample)  # type: ignore[attr-defined]
+            assert self.meta.bootstrap is not None
+            assert indices_resample is not None
+            assert self.meta.bootstrap.indices_resample is not None
+
+            self.bootstrap_data.persistence_diagrams.append(persistence_diagram)
+            self.bootstrap_data.cocycles.append(cocycles)
+            self.meta.bootstrap.indices_resample.append(indices_resample)
         return sparse_pairwise_distance_matrix
 
     def _compute_boundary_matrix(
@@ -205,7 +209,7 @@ class HomologyData:
     def _compute_loop_representatives(
         self,
         pairwise_distance_matrix: csr_matrix,
-        top_k: int = 1,  # top k homology classes to compute representatives
+        top_k: int | None = None,  # top k homology classes to compute representatives
         bootstrap: bool = False,
         idx_bootstrap: int = 0,
         n_reps_per_loop: int = 4,
@@ -236,20 +240,20 @@ class HomologyData:
                 )
         else:
             assert self.bootstrap_data is not None
-            assert len(self.bootstrap_data.persistence_diagrams) > idx_bootstrap  # type: ignore[attr-defined]
-            assert len(self.bootstrap_data.cocycles) > idx_bootstrap  # type: ignore[attr-defined]
+            assert len(self.bootstrap_data.persistence_diagrams) > idx_bootstrap
+            assert len(self.bootstrap_data.cocycles) > idx_bootstrap
             assert self.meta.bootstrap is not None
             assert self.meta.bootstrap.indices_resample is not None
             assert len(self.meta.bootstrap.indices_resample) > idx_bootstrap
             loop_births = np.array(
                 self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][0],
                 dtype=np.float32,
-            )  # type: ignore[attr-defined]
+            )
             loop_deaths = np.array(
                 self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][1],
                 dtype=np.float32,
-            )  # type: ignore[attr-defined]
-            cocycles = self.bootstrap_data.cocycles[idx_bootstrap][1]  # type: ignore[attr-defined]
+            )
+            cocycles = self.bootstrap_data.cocycles[idx_bootstrap][1]
             vertex_ids: IndexListDownSample = self.meta.bootstrap.indices_resample[
                 idx_bootstrap
             ]
@@ -280,14 +284,14 @@ class HomologyData:
         else:
             assert self.bootstrap_data is not None
             bootstrap_data = self.bootstrap_data
-            while len(bootstrap_data.loop_representatives) <= idx_bootstrap:  # type: ignore[attr-defined]
-                bootstrap_data.loop_representatives.append([])  # type: ignore[attr-defined]
+            while len(bootstrap_data.loop_representatives) <= idx_bootstrap:
+                bootstrap_data.loop_representatives.append([])
             if len(bootstrap_data.loop_representatives[idx_bootstrap]) < len(
                 indices_top_k
-            ):  # type: ignore[attr-defined]
+            ):
                 bootstrap_data.loop_representatives[idx_bootstrap] = [
                     [] for _ in range(len(indices_top_k))
-                ]  # type: ignore[attr-defined]
+                ]
 
         for loop_idx, i in enumerate(indices_top_k):
             loop_birth: float = loop_births[i].item()
@@ -312,7 +316,10 @@ class HomologyData:
             if not bootstrap:
                 self.loop_representatives[loop_idx] = loops
             else:
-                bootstrap_data.loop_representatives[idx_bootstrap][loop_idx] = loops  # type: ignore[attr-defined]
+                assert self.bootstrap_data is not None
+                self.bootstrap_data.loop_representatives[idx_bootstrap][loop_idx] = (
+                    loops
+                )
 
     def _assess_bootstrap_geometric_equivalence(
         self,
@@ -560,7 +567,7 @@ class HomologyData:
                             and is_homologically_equivalent
                         ):
                             self._ensure_loop_tracks()
-                            track = self.bootstrap_data.loop_tracks[si]
+                            track: LoopTrack = self.bootstrap_data.loop_tracks[si]
                             birth_boot = float(
                                 self.bootstrap_data.persistence_diagrams[idx_bootstrap][
                                     1

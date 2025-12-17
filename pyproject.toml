@@ -34,8 +34,9 @@ classifiers = [
 ]
 dependencies = [
   "cython>=3.0.12",
+  "glasbey==0.3",
   "igraph>=0.11",
-  "loguru>=0.7.3",
+  "loguru==0.7.3",
   "numba>=0.62.1",
   "numpy<2",
   "pandas",
@@ -56,6 +57,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+  "pyright==1.1.406",
   "ty>=0.0.1a34",
 ]
 
@@ -90,6 +92,8 @@ column_width = 120
 indent = 2
 keep_full_version = false
 max_supported_python = "3.12"
+
+# use 1.1.406 pyright or a version after 1.1.407 (does not work well with pydantic dataclass)
 
 [tool.pyright]
 include = [ "src" ]

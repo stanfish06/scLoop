@@ -31,4 +31,4 @@ IndexListSimplex: TypeAlias = Annotated[
     Field(min_length=0, description="Unique indicies for simplicies"),
 ]
 
-# TODO: make a type for boundary matrix. Restrict matrix size for efficient computation
+DimensionsHomology: TypeAlias = Annotated[list[Index_t], Field(min_length=0)]
