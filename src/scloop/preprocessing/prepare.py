@@ -171,6 +171,8 @@ def prepare_adata(
         sc.tl.diffmap(
             adata, n_comps=n_diffusion_comps, neighbors_key="neighbors_scloop"
         )
+        # first component of diffusion map represent local density
+        adata.obsm["X_diffmap"] = adata.obsm["X_diffmap"][:, 1:]
 
     if needs_scvi:
         if scvi_key not in adata.obsm:

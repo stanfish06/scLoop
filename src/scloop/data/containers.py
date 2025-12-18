@@ -593,6 +593,7 @@ class HomologyData:
                 end_time = time.perf_counter()
                 if verbose:
                     time_elapsed = end_time - start_time
+                    console.clear()
                     logger.success(
-                        f"Round finished in {int(time_elapsed // 3600)}h {int(time_elapsed % 3600 // 60)}m {int(time_elapsed % 60)}s"
+                        f"Round {idx_bootstrap + 1}/{n_bootstrap} finished in {int(time_elapsed // 3600)}h {int(time_elapsed % 3600 // 60)}m {int(time_elapsed % 60)}s"
                     )
