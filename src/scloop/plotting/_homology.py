@@ -277,6 +277,10 @@ def persistence_diagram(
     ax.scatter(
         base_births, base_deaths, color="lightgray", s=s, **(kwargs_scatter or {})
     )
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    min_val = min(xlim[0], ylim[0])
+    max_val = max(xlim[1], ylim[1])
 
     if show_bootstrap and data.bootstrap_data is not None:
         for diag_boot in data.bootstrap_data.persistence_diagrams:
@@ -290,6 +294,14 @@ def persistence_diagram(
                 color="lightgray",
                 s=s,
                 **(kwargs_scatter or {}),
+            )
+            max_val = max(
+                max_val,
+                max(np.percentile(births_boot, 90), np.percentile(deaths_boot, 90)),
+            )
+            min_val = min(
+                min_val,
+                min(np.percentile(births_boot, 10), np.percentile(deaths_boot, 10)),
             )
 
     track_ids = track_ids or []
@@ -309,24 +321,20 @@ def persistence_diagram(
                     **(kwargs_scatter or {}),
                 )
 
-    xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
-    min_val = min(xlim[0], ylim[0])
-    max_val = max(xlim[1], ylim[1])
+    num_ticks = 6
     ax.set_xlim(max(min_val, 0), max_val)
     ax.set_ylim(max(min_val, 0), max_val)
+    ticks = np.linspace(max(min_val, 0), max_val, num_ticks)
+    tick_labs = [round(i, 3) for i in np.linspace(max(min_val, 0), max_val, num_ticks)]
+    ax.set_xticks(ticks, tick_labs)
+    ax.set_yticks(ticks, tick_labs)
+
     ax.plot(
         [max(min_val, 0), max_val],
         [max(min_val, 0), max_val],
         color="red",
         linestyle="--",
     )
-    num_ticks = 6
-    ticks = np.linspace(max(min_val, 0), max_val, num_ticks)
-    tick_labs = [round(i, 3) for i in np.linspace(max(min_val, 0), max_val, num_ticks)]
-    ax.set_xticks(ticks, tick_labs)
-    ax.set_yticks(ticks, tick_labs)
-
     return ax
 
 
