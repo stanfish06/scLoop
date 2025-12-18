@@ -206,6 +206,7 @@ class HomologyData:
             col_simplex_diams=result.triangle_diameters,
         )
 
+    # ISSUE: currently, cocycles and loop representatives are de-coupled (for the ease of checking matches for bootstrap)
     def _compute_loop_representatives(
         self,
         pairwise_distance_matrix: csr_matrix,
