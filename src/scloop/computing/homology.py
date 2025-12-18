@@ -181,8 +181,8 @@ def compute_loop_homological_equivalence(
     nrow_A = boundary_matrix_d1.shape[0]
     ncol_A = boundary_matrix_d1.shape[1]
 
+    col_diams = np.asarray(boundary_matrix_d1.col_simplex_diams, dtype=float)
     if max_column_diameter is not None:
-        col_diams = np.asarray(boundary_matrix_d1.col_simplex_diams, dtype=float)
         cols_keep = np.flatnonzero(col_diams <= max_column_diameter)
         if cols_keep.size == 0:
             return [], []
@@ -194,6 +194,21 @@ def compute_loop_homological_equivalence(
         col_reindex[cols_keep] = np.arange(cols_keep.size, dtype=int)
         one_cidx_A = col_reindex[one_cidx_A]
         ncol_A = cols_keep.size
+        col_diams = col_diams[cols_keep]
+
+    # still have redundant columns, drop large triangles
+    # this can be caused by 2D holes but they are too expensive to check
+    if ncol_A > nrow_A:
+        cols_keep_sorted = np.argsort(col_diams)[:nrow_A]
+
+        mask = np.isin(one_cidx_A, cols_keep_sorted)
+        one_ridx_A = one_ridx_A[mask]
+        one_cidx_A = one_cidx_A[mask]
+
+        col_reindex = -np.ones(ncol_A, dtype=int)
+        col_reindex[cols_keep_sorted] = np.arange(nrow_A, dtype=int)
+        one_cidx_A = col_reindex[one_cidx_A]
+        ncol_A = nrow_A
 
     one_idx_b_list = [
         np.flatnonzero(loop_sums[i]).astype(int).tolist() for i in range(n_pairs_check)

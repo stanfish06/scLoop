@@ -218,7 +218,7 @@ class HomologyData:
         bootstrap: bool = False,
         idx_bootstrap: int = 0,
         n_reps_per_loop: int = 4,
-        life_pct: float = 0.1,
+        life_pct: float = 0,
         n_cocycles_used: int = 3,
         n_force_deviate: int = 4,
         k_yen: int = 8,
