@@ -70,6 +70,20 @@ def compute_persistence_diagram_and_cocycles(
     noise_scale: float = 1e3,
     **nei_kwargs,
 ) -> tuple[list, list, IndexListDistMatrix | None, csr_matrix]:
+    def _cap_infinite_deaths(diagrams: list, cap: float | None) -> list:
+        if cap is None or not np.isfinite(cap):
+            return diagrams
+        capped = []
+        for dim_pd in diagrams:
+            if len(dim_pd) < 2:
+                capped.append(dim_pd)
+                continue
+            births = np.asarray(dim_pd[0])
+            deaths = np.asarray(dim_pd[1])
+            deaths = np.where(np.isinf(deaths), cap, deaths)
+            capped.append([births, deaths])
+        return capped
+
     sparse_pairwise_distance_matrix, boot_idx = compute_sparse_pairwise_distance(
         adata=adata,
         meta=meta,
@@ -86,7 +100,7 @@ def compute_persistence_diagram_and_cocycles(
         do_cocycles=True,
     )
     return (
-        result.births_and_deaths_by_dim,
+        _cap_infinite_deaths(result.births_and_deaths_by_dim, thresh),
         result.cocycles_by_dim,
         boot_idx,
         sparse_pairwise_distance_matrix,
@@ -139,6 +153,7 @@ def compute_loop_homological_equivalence(
     loop_mask_a: np.ndarray,
     loop_mask_b: np.ndarray,
     n_pairs_check: int = 3,
+    max_column_diameter: float | None = None,
 ) -> tuple[list, list]:
     """
     Parameters
@@ -147,6 +162,9 @@ def compute_loop_homological_equivalence(
         Boolean mask of shape (n_a, n_edges); True where edge (row) is in the loop
     loop_mask_b: np.ndarray
         Boolean mask of shape (n_b, n_edges)
+    max_column_diameter: float | None
+        If provided, restrict the boundary matrix to columns (triangles) with diameter
+        no larger than this value.
     """
     assert loop_mask_a.shape[1] == boundary_matrix_d1.shape[0]
     assert loop_mask_b.shape[1] == boundary_matrix_d1.shape[0]
@@ -158,14 +176,48 @@ def compute_loop_homological_equivalence(
         return [], []
     n_pairs_check = min(n_pairs_check, loop_sums.shape[0])
 
+    one_ridx_A = np.asarray(boundary_matrix_d1.data[0])
+    one_cidx_A = np.asarray(boundary_matrix_d1.data[1])
+    nrow_A = boundary_matrix_d1.shape[0]
+    ncol_A = boundary_matrix_d1.shape[1]
+
+    col_diams = np.asarray(boundary_matrix_d1.col_simplex_diams, dtype=float)
+    if max_column_diameter is not None:
+        cols_keep = np.flatnonzero(col_diams <= max_column_diameter)
+        if cols_keep.size == 0:
+            return [], []
+        mask = np.isin(one_cidx_A, cols_keep)
+        one_ridx_A = one_ridx_A[mask]
+        one_cidx_A = one_cidx_A[mask]
+        # reindex columns
+        col_reindex = -np.ones(ncol_A, dtype=int)
+        col_reindex[cols_keep] = np.arange(cols_keep.size, dtype=int)
+        one_cidx_A = col_reindex[one_cidx_A]
+        ncol_A = cols_keep.size
+        col_diams = col_diams[cols_keep]
+
+    # still have redundant columns, drop large triangles
+    # this can be caused by 2D holes but they are too expensive to check
+    if ncol_A > nrow_A:
+        cols_keep_sorted = np.argsort(col_diams)[:nrow_A]
+
+        mask = np.isin(one_cidx_A, cols_keep_sorted)
+        one_ridx_A = one_ridx_A[mask]
+        one_cidx_A = one_cidx_A[mask]
+
+        col_reindex = -np.ones(ncol_A, dtype=int)
+        col_reindex[cols_keep_sorted] = np.arange(nrow_A, dtype=int)
+        one_cidx_A = col_reindex[one_cidx_A]
+        ncol_A = nrow_A
+
     one_idx_b_list = [
         np.flatnonzero(loop_sums[i]).astype(int).tolist() for i in range(n_pairs_check)
     ]
     results, solutions = solve_multiple_gf2(
-        one_ridx_A=boundary_matrix_d1.data[0],
-        one_cidx_A=boundary_matrix_d1.data[1],
-        nrow_A=boundary_matrix_d1.shape[0],
-        ncol_A=boundary_matrix_d1.shape[1],
+        one_ridx_A=one_ridx_A.tolist(),
+        one_cidx_A=one_cidx_A.tolist(),
+        nrow_A=nrow_A,
+        ncol_A=ncol_A,
         one_idx_b_list=one_idx_b_list,
     )
 

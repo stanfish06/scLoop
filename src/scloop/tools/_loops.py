@@ -24,6 +24,7 @@ def _get_scloop_meta(adata: AnnData) -> ScloopMeta:
 def find_loops(
     adata: AnnData,
     threshold_homology: Annotated[float, Field(ge=0)] | None = None,
+    threshold_boundary: Annotated[float, Field(ge=0)] | None = None,
     n_candidates: Annotated[int, Field(ge=1)] = 1,
     n_bootstrap: Annotated[int, Field(ge=0)] = 10,
     n_check_per_candidate: Annotated[int, Field(ge=1)] = 1,
@@ -34,7 +35,10 @@ def find_loops(
     hd: HomologyData = HomologyData(meta=meta)
 
     sparse_dist_mat = hd._compute_homology(adata=adata, thresh=threshold_homology)
-    hd._compute_boundary_matrix(adata=adata, thresh=threshold_homology)
+    boundary_thresh = threshold_boundary
+    if boundary_thresh is None:
+        boundary_thresh = threshold_homology
+    hd._compute_boundary_matrix(adata=adata, thresh=boundary_thresh)
     hd._compute_loop_representatives(
         pairwise_distance_matrix=sparse_dist_mat,
         top_k=n_candidates,
@@ -45,6 +49,7 @@ def find_loops(
         n_bootstrap=n_bootstrap,
         thresh=threshold_homology,
         top_k=n_candidates * n_check_per_candidate,
+        k_neighbors_check_equivalence=n_check_per_candidate,
         n_max_workers=n_max_workers,
         verbose=verbose,
     )

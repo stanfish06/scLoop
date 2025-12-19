@@ -205,7 +205,12 @@ class HomologyData:
             row_simplex_diams=row_simplex_diams.tolist(),
             col_simplex_diams=result.triangle_diameters,
         )
+        logger.info(
+            f"Boundary matrix (dim 1) built: edges x triangles = "
+            f"{self.boundary_matrix_d1.shape[0]} x {self.boundary_matrix_d1.shape[1]}"
+        )
 
+    # ISSUE: currently, cocycles and loop representatives are de-coupled (for the ease of checking matches for bootstrap)
     def _compute_loop_representatives(
         self,
         pairwise_distance_matrix: csr_matrix,
@@ -266,7 +271,8 @@ class HomologyData:
             return [], []
         top_k = min(top_k, loop_births.size)
 
-        indices_top_k = np.argpartition(loop_deaths - loop_births, -top_k)[-top_k:]
+        persistence = loop_deaths - loop_births
+        indices_top_k = np.argsort(persistence)[::-1][:top_k]
 
         dm_upper = triu(pairwise_distance_matrix, k=1).tocoo()
         edges_array, edge_diameters = extract_edges_from_coo(
@@ -377,6 +383,7 @@ class HomologyData:
         assert self.boundary_matrix_d1 is not None
         assert self.loop_representatives is not None
         assert self.bootstrap_data is not None
+        self._ensure_loop_tracks()
         if target_class_idx is None:
             target_class_idx = source_class_idx
         if idx_bootstrap >= len(self.bootstrap_data.loop_representatives):
@@ -392,6 +399,11 @@ class HomologyData:
         if len(source_loops) == 0 or len(target_loops) == 0:
             return (source_class_idx, target_class_idx, False)
 
+        loop_track = self.bootstrap_data.loop_tracks.get(source_class_idx)
+        if loop_track is None:
+            return (source_class_idx, target_class_idx, False)
+        source_loop_death = loop_track.death_root
+
         mask_a = self._loops_to_edge_mask(source_loops)
         mask_b = self._loops_to_edge_mask(target_loops)
 
@@ -400,6 +412,7 @@ class HomologyData:
             loop_mask_a=mask_a,
             loop_mask_b=mask_b,
             n_pairs_check=n_pairs_check,
+            max_column_diameter=source_loop_death,
         )
         return (source_class_idx, target_class_idx, any(r == 0 for r in results))
 
@@ -413,7 +426,8 @@ class HomologyData:
         top_k = len(self.loop_representatives)
         if top_k == 0:
             return
-        indices_top_k = np.argpartition(loop_deaths - loop_births, -top_k)[-top_k:]
+        persistence = loop_deaths - loop_births
+        indices_top_k = np.argsort(persistence)[::-1][:top_k]
         for track_idx, loop_idx in enumerate(indices_top_k):
             birth = float(loop_births[loop_idx])
             death = float(loop_deaths[loop_idx])
@@ -439,6 +453,7 @@ class HomologyData:
         n_pairs_check_equivalence: int = 4,
         n_max_workers: int = 8,
         k_neighbors_check_equivalence: int = 3,
+        method_geometric_equivalence: LoopDistMethod = "hausdorff",
         verbose: bool = False,
         **nei_kwargs,
     ) -> None:
@@ -476,7 +491,7 @@ class HomologyData:
                 if verbose:
                     logger.info(f"Start round {idx_bootstrap + 1}/{n_bootstrap}")
                 if verbose:
-                    logger.info("Compute bootstrapped homology")
+                    logger.info("Computing bootstrapped homology")
                 pairwise_distance_matrix = self._compute_homology(
                     adata=adata,
                     thresh=thresh,
@@ -485,7 +500,7 @@ class HomologyData:
                     **nei_kwargs,
                 )
                 if verbose:
-                    logger.info("Find loops in the bootstrapped data")
+                    logger.info("Finding loops in the bootstrapped data")
                 self._compute_loop_representatives(
                     pairwise_distance_matrix=pairwise_distance_matrix,
                     idx_bootstrap=idx_bootstrap,
@@ -500,7 +515,7 @@ class HomologyData:
                     loop_upper_t_pct=loop_upper_t_pct,
                 )
                 if verbose:
-                    logger.info("Match bootstrapped loops to the original loops")
+                    logger.info("Matching bootstrapped loops to the original loops")
                 """
                 ============= geometric matching =============
                 - find loop neighbors using hausdorff/frechet
@@ -514,6 +529,12 @@ class HomologyData:
 
                 if n_original_loop_classes == 0 or n_bootstrap_loop_classes == 0:
                     continue
+
+                logger.info(
+                    f"[Bootstrap {idx_bootstrap + 1}/{n_bootstrap}] "
+                    f"Geometric matching candidates: {n_original_loop_classes} original classes "
+                    f"x {n_bootstrap_loop_classes} bootstrap classes"
+                )
 
                 pairwise_result_matrix = np.full(
                     (n_original_loop_classes, n_bootstrap_loop_classes), np.nan
@@ -529,6 +550,7 @@ class HomologyData:
                                 i,
                                 j,
                                 idx_bootstrap,
+                                method_geometric_equivalence,
                             )
                             tasks[task] = (i, j)
 
@@ -538,6 +560,11 @@ class HomologyData:
 
                 neighbor_indices, neighbor_distances = nearest_neighbor_per_row(
                     pairwise_result_matrix, k_neighbors_check_equivalence
+                )
+
+                logger.info(
+                    f"[Bootstrap {idx_bootstrap + 1}/{n_bootstrap}] "
+                    f"Geometric neighbors chosen per class: {k_neighbors_check_equivalence}"
                 )
                 """
                 ========= homological matching =========
@@ -566,6 +593,12 @@ class HomologyData:
                             self.bootstrap_data is not None
                             and is_homologically_equivalent
                         ):
+                            logger.info(
+                                f"[Bootstrap {idx_bootstrap + 1}/{n_bootstrap}] "
+                                f"Homology match found: original class #{si}↔bootstrap class #{tj} "
+                                f"({method_geometric_equivalence} distance={geo_dist:.4f}, "
+                                f"neighbor rank {neighbor_rank + 1}/{k_neighbors_check_equivalence})"
+                            )
                             self._ensure_loop_tracks()
                             track: LoopTrack = self.bootstrap_data.loop_tracks[si]
                             birth_boot = float(
@@ -593,5 +626,5 @@ class HomologyData:
                 if verbose:
                     time_elapsed = end_time - start_time
                     logger.success(
-                        f"Round finished in {int(time_elapsed // 3600)}h {int(time_elapsed % 3600 // 60)}m {int(time_elapsed % 60)}s"
+                        f"Round {idx_bootstrap + 1}/{n_bootstrap} finished in {int(time_elapsed // 3600)}h {int(time_elapsed % 3600 // 60)}m {int(time_elapsed % 60)}s"
                     )

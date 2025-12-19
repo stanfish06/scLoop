@@ -622,6 +622,7 @@ public:
 		Compute full dim_2 boundary matrix with no redundant columns.
 		Return triangles with its vertices and diameter.
 		For each tetrahedron, only 3 triangles are needed, as the last one can be derived by adding the other three together.
+		This does not guarantee to remove all redundent triangles as it does not check 2d holes, which are too expensive to check individually
 	 */
     std::vector<std::pair<std::vector<index_t>, value_t>>
     assemble_full_dim_2_boundary_matrix() {

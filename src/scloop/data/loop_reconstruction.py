@@ -29,8 +29,7 @@ def reconstruct_n_loop_representatives(
         return [], []
     filt_t = loop_birth + (loop_death - loop_birth) * life_pct
 
-    # Parse cocycle edges (each entry is [[i, j], coeff])
-    cocycle_edges: list[tuple[int, int]] = []
+    all_cocycle_edges: list[tuple[int, int]] = []
     for simplex in cocycles_dim1:
         try:
             verts, coeff = simplex
@@ -38,50 +37,64 @@ def reconstruct_n_loop_representatives(
             continue
         if coeff == 0 or len(verts) != 2:
             continue
-        cocycle_edges.append((int(verts[0]), int(verts[1])))
-        if len(cocycle_edges) == n_cocycles_used:
-            break
+        all_cocycle_edges.append((int(verts[0]), int(verts[1])))
+
+    if not all_cocycle_edges:
+        return [], []
+
+    cocycle_edges_for_paths = all_cocycle_edges[:n_cocycles_used]
 
     edge_diameters = np.asarray(edge_diameters)
     mask = edge_diameters <= filt_t
     if not np.any(mask):
         return [], []
     edges_filt = edges[mask]
-    weights_filt = edge_diameters[mask].tolist()
+    weights_filt = edge_diameters[mask]
 
-    sources = edges_filt[:, 0].tolist() + [e[0] for e in cocycle_edges]
-    destinations = edges_filt[:, 1].tolist() + [e[1] for e in cocycle_edges]
-    weights = weights_filt + [math.inf] * len(cocycle_edges)
-    if len(sources) == 0:
-        return [], []
+    edge_weight_dict: dict[tuple[int, int], float] = {}
+    for i in range(len(edges_filt)):
+        key = (
+            min(edges_filt[i, 0], edges_filt[i, 1]),
+            max(edges_filt[i, 0], edges_filt[i, 1]),
+        )
+        edge_weight_dict[key] = max(
+            edge_weight_dict.get(key, -math.inf), weights_filt[i]
+        )
 
-    n_vertices = max(max(sources), max(destinations)) + 1
-    g = ig.Graph(n=n_vertices, edges=list(zip(sources, destinations)), directed=False)
-    g.es["weight"] = weights
+    for e in all_cocycle_edges:
+        key = (min(e), max(e))
+        edge_weight_dict[key] = math.inf
 
     cycles_pool: list[list[int]] = []
     cycles_dist: list[float] = []
 
     for _ in range(n_force_deviate):
+        edge_list = list(edge_weight_dict.keys())
+        weight_list = [edge_weight_dict[e] for e in edge_list]
+
+        if not edge_list:
+            break
+
+        n_vertices = max(max(e) for e in edge_list) + 1
+        g = ig.Graph(n=n_vertices, edges=edge_list, directed=False)
+        g.es["weight"] = weight_list
+
         paths_this_round: list[list[int]] = []
-        for i, j in cocycle_edges:
+        for i, j in cocycle_edges_for_paths:
             paths = _k_shortest_paths(g, i, j, k_yen)
             if not paths:
                 continue
             for path in paths:
                 dist = _path_weight(g, path)
-                cycles_pool.append(path)
-                paths_this_round.append(path)
-                cycles_dist.append(dist)
+                if math.isfinite(dist):
+                    cycles_pool.append(path)
+                    paths_this_round.append(path)
+                    cycles_dist.append(dist)
 
-        # Force deviation
         for path in paths_this_round:
             for u, v in zip(path[:-1], path[1:]):
-                try:
-                    eid = g.get_eid(u, v, directed=False)
-                except ig._igraph.InternalError:
-                    continue
-                g.es[eid]["weight"] = math.inf
+                key = (min(u, v), max(u, v))
+                edge_weight_dict[key] = math.inf
 
     return _select_diverse_loops(
         cycles=cycles_pool,
@@ -113,6 +126,8 @@ def _path_weight(g: ig.Graph, path: Sequence[int]) -> float:
         except ig._igraph.InternalError:
             return math.inf
         w = g.es[eid]["weight"]
+        if not math.isfinite(w):
+            return math.inf
         weight += float(w)
     return weight
 

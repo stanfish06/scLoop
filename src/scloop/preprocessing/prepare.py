@@ -1,16 +1,18 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Michigan)
-import warnings
-
 import numpy as np
 import scanpy as sc
 from anndata import AnnData
+from loguru import logger
 from pydantic import validate_call
+from rich.console import Console
 
 from ..data.metadata import PreprocessMeta, ScloopMeta
 from ..data.types import EmbeddingMethod, EmbeddingNeighbors, FeatureSelectionMethod
 from .downsample import sample
 
 __all__ = ["prepare_adata"]
+
+console = Console()
 
 
 @validate_call(config={"arbitrary_types_allowed": True})
@@ -22,6 +24,7 @@ def _normalize_and_select_hvg(
     n_top_genes: int = 2000,
     batch_key: str = "sample_labels",
     subset: bool = True,
+    verbose: bool = True,
 ):
     """
     normalize_and_select_hvg(adata, do_norm, compute_hvg, target_sum, n_top_genes, batch_key)
@@ -48,44 +51,48 @@ def _normalize_and_select_hvg(
     counts_available = "counts" in adata.layers
     if do_norm:
         if done_norm:
-            warnings.warn(
-                "adata has already undergone log1p transformation, nothing will be perfomed on X",
-                UserWarning,
-            )
+            if verbose:
+                logger.info("adata already normalized (log1p), skipping normalization")
         else:
             if not np.all(np.equal(np.mod(adata.X.data, 1), 0)):
                 raise ValueError(
                     "adata.X contains non integer values, check if it is library normalized"
                 )
             if not counts_available and not done_norm:
-                print(
-                    "counts layer is not available and X is not log1p transformed. Copy X to counts before normalization"
-                )
+                if verbose:
+                    logger.info("Copying X to counts layer before normalization")
                 adata.layers["counts"] = adata.X.copy()
                 counts_available = True
+            if verbose:
+                logger.info(
+                    f"Normalizing to target sum {target_sum} and applying log1p transformation"
+                )
             sc.pp.normalize_total(adata, target_sum=target_sum)
             sc.pp.log1p(adata)
 
     if compute_hvg:
         if done_hvg:
-            warnings.warn(
-                "adata has already undergone HVG selection, nothing will be perfomed on X",
-                UserWarning,
-            )
+            if verbose:
+                logger.info("adata already has HVG selection, skipping HVG computation")
         else:
             if not counts_available:
                 raise ValueError("counts layer is not available, cannot compute HVG")
             if batch_key not in adata.obs:
-                warnings.warn(
-                    f"batch_key {batch_key} not found in adata.obs. Will compute HVG on all cells.",
-                    UserWarning,
-                )
+                if verbose:
+                    logger.warning(
+                        f"batch_key '{batch_key}' not found in adata.obs, computing HVG on all cells"
+                    )
                 batch_key = None
 
             if not adata.raw:
-                print("no raw in adata, so save X to raw before computing hvg")
+                if verbose:
+                    logger.info("Saving X to raw before computing HVG")
                 adata.raw = adata
 
+            if verbose:
+                logger.info(
+                    f"Computing top {n_top_genes} highly variable genes (seurat_v3)"
+                )
             sc.pp.highly_variable_genes(
                 adata,
                 n_top_genes=n_top_genes,
@@ -116,6 +123,7 @@ def prepare_adata(
     embedding_downsample: EmbeddingMethod | None = None,
     groupby_downsample: str | None = None,
     random_state_downsample: int = 0,
+    verbose: bool = True,
     copy: bool = False,
 ):
     """
@@ -137,6 +145,18 @@ def prepare_adata(
     """
     adata = adata.copy() if copy else adata
 
+    if verbose:
+        logger.remove()
+        logger.add(
+            lambda s: console.print(s, end=""),
+            colorize=False,
+            level="TRACE",
+            format="<green>{time:YYYY/MM/DD HH:mm:ss}</green> | {level.icon} - <level>{message}</level>",
+        )
+        logger.info(
+            f"Preparing AnnData with {adata.n_obs} cells and {adata.n_vars} genes"
+        )
+
     needs_pca = "X_pca" not in adata.obsm and "pca" in (
         embedding_method,
         embedding_neighbors,
@@ -145,6 +165,8 @@ def prepare_adata(
     needs_hvg = feature_selection_method == "hvg"
     needs_scvi = embedding_method == "scvi" or embedding_neighbors == "scvi"
 
+    if verbose and (library_normalization or needs_hvg):
+        logger.info("Step 1/4: Normalization and feature selection")
     _normalize_and_select_hvg(
         adata,
         library_normalization,
@@ -153,14 +175,30 @@ def prepare_adata(
         n_top_genes,
         batch_key,
         subset=False,
+        verbose=verbose,
     )
 
     if needs_pca:
+        if verbose:
+            logger.info("Step 2/4: Computing PCA")
         if scale_before_pca:
+            if verbose:
+                logger.info("Scaling data before PCA")
             sc.pp.scale(adata)
+        if verbose:
+            logger.info(f"Computing PCA with {n_pca_comps} components")
         sc.pp.pca(adata, n_comps=n_pca_comps, use_highly_variable=needs_hvg)
+    elif "X_pca" in adata.obsm:
+        if verbose:
+            logger.info("Step 2/4: PCA already computed, skipping")
+    else:
+        if verbose:
+            logger.info("Step 2/4: PCA not needed, skipping")
 
     if needs_diffmap:
+        if verbose:
+            logger.info("Step 3/4: Computing diffusion map")
+            logger.info(f"Computing neighbors with n_neighbors={n_neighbors}")
         sc.pp.neighbors(
             adata,
             method="gauss",
@@ -168,13 +206,25 @@ def prepare_adata(
             key_added="neighbors_scloop",
             use_rep=embedding_method if embedding_neighbors != "pca" else None,
         )
+        if verbose:
+            logger.info(f"Computing diffusion map with {n_diffusion_comps} components")
         sc.tl.diffmap(
             adata, n_comps=n_diffusion_comps, neighbors_key="neighbors_scloop"
         )
+        # first component of diffusion map represent local density
+        adata.obsm["X_diffmap"] = adata.obsm["X_diffmap"][:, 1:]
+    elif "X_diffmap" in adata.obsm:
+        if verbose:
+            logger.info("Step 3/4: Diffusion map already computed, skipping")
+    else:
+        if verbose:
+            logger.info("Step 3/4: Diffusion map not needed, skipping")
 
     if needs_scvi:
         if scvi_key not in adata.obsm:
             raise ValueError(f"scvi key {scvi_key} does not exist in adata.obsm")
+        if verbose:
+            logger.info(f"Using scVI embedding from {scvi_key}")
 
     """
     ========= downsample =========
@@ -182,9 +232,17 @@ def prepare_adata(
     - keep rare cell types
     ==============================
     """
+    if verbose:
+        logger.info("Step 4/4: Downsampling")
     if embedding_downsample is None:
         embedding_downsample = embedding_method
     if downsample:
+        if verbose:
+            logger.info(
+                f"Downsampling to {n_downsample} cells using {embedding_downsample} embedding"
+            )
+            if groupby_downsample:
+                logger.info(f"Stratified by {groupby_downsample}")
         indices_downsample = sample(
             adata=adata,
             embedding_method=embedding_downsample,
@@ -192,7 +250,11 @@ def prepare_adata(
             n=n_downsample,
             random_state=random_state_downsample,
         )
+        if verbose:
+            logger.info(f"Selected {len(indices_downsample)} cells for analysis")
     else:
+        if verbose:
+            logger.info("Downsampling disabled, using all cells")
         indices_downsample = None
 
     preprocess_meta = PreprocessMeta(
@@ -224,5 +286,8 @@ def prepare_adata(
             scloop_meta = ScloopMeta(**scloop_meta)
         scloop_meta.preprocess = preprocess_meta
         adata.uns["scloop_meta"] = scloop_meta
+
+    if verbose:
+        logger.success("AnnData preparation complete")
 
     return adata if copy else None
