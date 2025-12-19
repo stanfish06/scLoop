@@ -76,6 +76,7 @@ class BoundaryMatrix(BaseModel, ABC):
                 )
         return v
 
+    @property
     @abstractmethod
     def row_simplex_decode(self) -> list:
         """
@@ -83,6 +84,7 @@ class BoundaryMatrix(BaseModel, ABC):
         """
         pass
 
+    @property
     @abstractmethod
     def col_simplex_decode(self) -> list:
         """
@@ -94,9 +96,11 @@ class BoundaryMatrix(BaseModel, ABC):
 class BoundaryMatrixD1(BoundaryMatrix):
     data: tuple[list[Index_t], list[Index_t]]
 
+    @property
     def row_simplex_decode(self) -> list[tuple[Index_t, Index_t]]:
         return decode_edges(np.array(self.row_simplex_ids), self.num_vertices)
 
+    @property
     def col_simplex_decode(self) -> list[tuple[Index_t, Index_t, Index_t]]:
         return decode_triangles(np.array(self.col_simplex_ids), self.num_vertices)
 
