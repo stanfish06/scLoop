@@ -75,8 +75,8 @@ src/scloop/
 │   ├── mlp.py
 │   └── nf.py
 ├── plotting
-│   ├── __init__.py
-│   └── plot.py
+│   ├── _homology.py
+│   └── __init__.py
 ├── preprocessing
 │   ├── delve
 │   │   ├── delve.py
@@ -87,6 +87,7 @@ src/scloop/
 │   └── prepare.py
 ├── py.typed
 ├── tools
+│   ├── _cross_match.py
 │   ├── __init__.py
 │   └── _loops.py
 └── utils

@@ -6,6 +6,7 @@ from typing import Annotated
 from anndata import AnnData
 from pydantic import Field
 
+from ..data.analysis_containers import BootstrapAnalysis
 from ..data.containers import HomologyData
 from ..data.metadata import ScloopMeta
 
@@ -34,7 +35,6 @@ def find_loops(
 ) -> None:
     meta = _get_scloop_meta(adata)
     hd: HomologyData = HomologyData(meta=meta)
-
     sparse_dist_mat = hd._compute_homology(adata=adata, thresh=threshold_homology)
     boundary_thresh = threshold_boundary
     if boundary_thresh is None:
@@ -45,7 +45,13 @@ def find_loops(
         top_k=n_candidates,
         life_pct=tightness_loops,
     )
-
+    """
+    ========= bootstrap =========
+    - resample data
+    - find loops in resamples
+    - map loops to original loops
+    =============================
+    """
     hd._bootstrap(
         adata=adata,
         n_bootstrap=n_bootstrap,
@@ -56,4 +62,14 @@ def find_loops(
         life_pct=tightness_loops,
         verbose=verbose,
     )
+
+    """
+    ========= statistcal tests =========
+    - fisher exact test loop presence
+    - gamma test of persistence
+    ====================================
+    """
+    assert hd.bootstrap_data is not None
+    bootstrap_data: BootstrapAnalysis = hd.bootstrap_data
+    bootstrap_data.fisher_test_presence(method_pval_correction="benjamini-hochberg")
     adata.uns["scloop"] = hd

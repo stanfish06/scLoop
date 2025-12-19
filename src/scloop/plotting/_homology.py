@@ -353,11 +353,12 @@ def loops(
     basis: str,
     key_homology: str = "scloop",
     track_ids: list[Index_t] | None = None,
+    loop_ids: list[Index_t | tuple[Index_t, Index_t]] | None = None,
     components: tuple[Index_t, Index_t] | list[Index_t] = (0, 1),
     ax: Axes | None = None,
     *,
     show_bootstrap: bool = True,
-    s: PositiveFloat = 1,
+    pointsize: PositiveFloat = 1,
     figsize: tuple[PositiveFloat, PositiveFloat] = (5, 5),
     dpi: PositiveFloat = 300,
     kwargs_figure: dict | None = None,
@@ -366,7 +367,6 @@ def loops(
     kwargs_scatter: dict | None = None,
 ) -> Axes:
     data = _get_homology_data(adata, key_homology)
-    track_ids = track_ids or []
     if len(components) != 2:
         raise ValueError("components must contain exactly two entries.")
 
@@ -377,10 +377,15 @@ def loops(
     else:
         raise KeyError(f"Embedding {basis} not found in adata.obsm.")
 
-    n_tracks = len(track_ids)
-    if n_tracks > 0:
+    if track_ids is not None and loop_ids is not None:
+        raise ValueError("Only one of track_ids or loop_ids can be provided.")
+
+    selectors = loop_ids if loop_ids is not None else track_ids or []
+
+    n_selectors = len(selectors)
+    if n_selectors > 0:
         block_size = 5
-        cmap = glasbey.create_block_palette(block_sizes=[block_size] * n_tracks)
+        cmap = glasbey.create_block_palette(block_sizes=[block_size] * n_selectors)
         cmap = [cmap[i : i + block_size] for i in range(0, len(cmap), block_size)]
     else:
         block_size = 0
@@ -407,7 +412,7 @@ def loops(
         emb_background[:, components[0]],
         emb_background[:, components[1]],
         color="lightgray",
-        s=s,
+        s=pointsize,
         **(kwargs_scatter or {}),
     )
 
@@ -417,25 +422,49 @@ def loops(
             coords = np.vstack([coords, coords[0]])
         return coords
 
-    for i, src_tid in enumerate(track_ids):
+    def _loops_for_selector(
+        selector: Index_t | tuple[Index_t, Index_t],
+    ) -> list[np.ndarray]:
         loops_plot: list[np.ndarray] = []
-        tracked_pairs = _get_track_loop(data, src_tid)
-        if src_tid < len(data.loop_representatives):
-            loops_plot.extend(
-                [_loops_to_coords(loop) for loop in data.loop_representatives[src_tid]]
-            )
-        if show_bootstrap and data.bootstrap_data is not None:
-            for tid in tracked_pairs:
-                if tid[0] == 0:
-                    continue
-                if (tid[0] - 1) >= len(data.bootstrap_data.loop_representatives):
-                    continue
-                boot_loops_all = data.bootstrap_data.loop_representatives[tid[0] - 1]
-                if tid[1] >= len(boot_loops_all):
-                    continue
+        if isinstance(selector, int):
+            if selector < len(data.loop_representatives):
                 loops_plot.extend(
-                    [_loops_to_coords(loop) for loop in boot_loops_all[tid[1]]]
+                    [
+                        _loops_to_coords(loop)
+                        for loop in data.loop_representatives[selector]
+                    ]
                 )
+            if show_bootstrap and data.bootstrap_data is not None:
+                tracked_pairs = _get_track_loop(data, selector)
+                for tid in tracked_pairs:
+                    if tid[0] == 0:
+                        continue
+                    if (tid[0] - 1) >= len(data.bootstrap_data.loop_representatives):
+                        continue
+                    boot_loops_all = data.bootstrap_data.loop_representatives[
+                        tid[0] - 1
+                    ]
+                    if tid[1] >= len(boot_loops_all):
+                        continue
+                    loops_plot.extend(
+                        [_loops_to_coords(loop) for loop in boot_loops_all[tid[1]]]
+                    )
+        else:
+            if not show_bootstrap or data.bootstrap_data is None:
+                return loops_plot
+            idx_bootstrap, target_class_idx = selector
+            if idx_bootstrap >= len(data.bootstrap_data.loop_representatives):
+                return loops_plot
+            boot_loops_all = data.bootstrap_data.loop_representatives[idx_bootstrap]
+            if target_class_idx >= len(boot_loops_all):
+                return loops_plot
+            loops_plot.extend(
+                [_loops_to_coords(loop) for loop in boot_loops_all[target_class_idx]]
+            )
+        return loops_plot
+
+    for i, selector in enumerate(selectors):
+        loops_plot = _loops_for_selector(selector)
 
         for j, loop in enumerate(loops_plot):
             ax.plot(

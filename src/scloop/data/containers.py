@@ -595,6 +595,18 @@ class HomologyData:
                                 )
                                 tasks[task] = (si, tj, neighbor_distances[si, k], k)
 
+                    # ISSUE: very bad way of finding the brith and death of bootstrap loops
+                    boot_births = np.array(
+                        self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][0],
+                        dtype=np.float32,
+                    )
+                    boot_deaths = np.array(
+                        self.bootstrap_data.persistence_diagrams[idx_bootstrap][1][1],
+                        dtype=np.float32,
+                    )
+                    boot_persistence = boot_deaths - boot_births
+                    boot_indices_sorted = np.argsort(boot_persistence)[::-1]
+
                     for task in as_completed(tasks):
                         si, tj, geo_dist, neighbor_rank = tasks[task]
                         _, _, is_homologically_equivalent = task.result()
@@ -610,16 +622,13 @@ class HomologyData:
                             )
                             self._ensure_loop_tracks()
                             track: LoopTrack = self.bootstrap_data.loop_tracks[si]
-                            birth_boot = float(
-                                self.bootstrap_data.persistence_diagrams[idx_bootstrap][
-                                    1
-                                ][0][tj]
+                            original_idx = (
+                                boot_indices_sorted[tj]
+                                if tj < len(boot_indices_sorted)
+                                else tj
                             )
-                            death_boot = float(
-                                self.bootstrap_data.persistence_diagrams[idx_bootstrap][
-                                    1
-                                ][1][tj]
-                            )
+                            birth_boot = float(boot_births[original_idx])
+                            death_boot = float(boot_deaths[original_idx])
                             track.matches.append(
                                 LoopMatch(
                                     idx_bootstrap=idx_bootstrap,

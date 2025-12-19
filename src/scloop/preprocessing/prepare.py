@@ -273,9 +273,7 @@ def prepare_adata(
         n_diffusion_comps=n_diffusion_comps if needs_diffmap else None,
         scvi_key=scvi_key if needs_scvi else None,
         indices_downsample=indices_downsample,
-        num_vertices=len(indices_downsample)
-        if indices_downsample is not None
-        else adata.shape[0],
+        num_vertices=adata.shape[0],
     )
 
     if "scloop_meta" not in adata.uns:
