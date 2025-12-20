@@ -29,6 +29,7 @@ class PreprocessMeta(BaseModel):
 
 # allow downsample as well?
 # TODO: store parameters for bootstraping
+# TODO: store significant loop data
 class BootstrapMeta(BaseModel):
     indices_resample: list[IndexListDownSample] | None = None
 

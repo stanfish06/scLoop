@@ -34,7 +34,14 @@ from .analysis_containers import (
 )
 from .loop_reconstruction import reconstruct_n_loop_representatives
 from .metadata import BootstrapMeta, ScloopMeta
-from .types import Diameter_t, Index_t, IndexListDownSample, LoopDistMethod, Size_t
+from .types import (
+    Diameter_t,
+    Index_t,
+    IndexListDownSample,
+    LoopDistMethod,
+    MultipleTestCorrectionMethod,
+    Size_t,
+)
 from .utils import (
     decode_edges,
     decode_triangles,
@@ -646,3 +653,30 @@ class HomologyData:
                     logger.success(
                         f"Round {idx_bootstrap + 1}/{n_bootstrap} finished in {int(time_elapsed // 3600)}h {int(time_elapsed % 3600 // 60)}m {int(time_elapsed % 60)}s"
                     )
+
+    def _test_loops(
+        self,
+        method_pval_correction: MultipleTestCorrectionMethod = "benjamini-hochberg",
+    ) -> None:
+        if self.bootstrap_data is None:
+            return
+        if self.bootstrap_data.num_bootstraps == 0:
+            return
+
+        fisher_results = self.bootstrap_data.fisher_test_presence(
+            method_pval_correction=method_pval_correction
+        )
+        self.bootstrap_data.fisher_presence_results = fisher_results
+
+        (
+            pvalues_raw_persistence,
+            pvalues_corrected_persistence,
+            gamma_params,
+        ) = self.bootstrap_data.gamma_test_persistence(
+            method_pval_correction=method_pval_correction
+        )
+        self.bootstrap_data.gamma_persistence_results = (
+            pvalues_raw_persistence,
+            pvalues_corrected_persistence,
+        )
+        self.bootstrap_data.gamma_null_params = gamma_params

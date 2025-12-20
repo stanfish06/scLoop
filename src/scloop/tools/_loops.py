@@ -6,7 +6,6 @@ from typing import Annotated
 from anndata import AnnData
 from pydantic import Field
 
-from ..data.analysis_containers import BootstrapAnalysis
 from ..data.containers import HomologyData
 from ..data.metadata import ScloopMeta
 
@@ -70,6 +69,5 @@ def find_loops(
     ====================================
     """
     assert hd.bootstrap_data is not None
-    bootstrap_data: BootstrapAnalysis = hd.bootstrap_data
-    bootstrap_data.fisher_test_presence(method_pval_correction="benjamini-hochberg")
+    hd._test_loops(method_pval_correction="benjamini-hochberg")
     adata.uns["scloop"] = hd

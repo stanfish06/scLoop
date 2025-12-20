@@ -6,7 +6,7 @@ from typing import Optional
 import numpy as np
 from pydantic import ConfigDict, Field
 from pydantic.dataclasses import dataclass
-from scipy.stats import false_discovery_control, fisher_exact
+from scipy.stats import false_discovery_control, fisher_exact, gamma
 from scipy.stats.contingency import odds_ratio
 
 from .types import Count_t, MultipleTestCorrectionMethod, PositiveFloat
@@ -35,6 +35,10 @@ class LoopTrack:
     def n_matches(self) -> Count_t:
         return len({m.idx_bootstrap for m in self.matches})
 
+    @property
+    def lifetime(self) -> PositiveFloat:
+        return self.death_root - self.birth_root
+
 
 @dataclass
 class BootstrapAnalysis:
@@ -43,6 +47,19 @@ class BootstrapAnalysis:
     cocycles: list[list] = Field(default_factory=list)
     loop_representatives: list[list[list[list[int]]]] = Field(default_factory=list)
     loop_tracks: dict[int, LoopTrack] = Field(default_factory=dict)
+    fisher_presence_results: (
+        tuple[
+            list[PositiveFloat],
+            list[PositiveFloat],
+            list[PositiveFloat],
+            list[PositiveFloat],
+        ]
+        | None
+    ) = None
+    gamma_persistence_results: (
+        tuple[list[PositiveFloat], list[PositiveFloat]] | None
+    ) = None
+    gamma_null_params: tuple[PositiveFloat, PositiveFloat, PositiveFloat] | None = None
 
     @property
     def _n_total_matches(self) -> Count_t:
@@ -99,6 +116,72 @@ class BootstrapAnalysis:
             odds_ratio_presence,
             pvalues_raw_presence,
             pvalues_corrected_presence,
+        )
+
+    def gamma_test_persistence(
+        self, method_pval_correction: MultipleTestCorrectionMethod
+    ) -> tuple[
+        list[PositiveFloat],
+        list[PositiveFloat],
+        tuple[PositiveFloat, PositiveFloat, PositiveFloat] | None,
+    ]:
+        if len(self.persistence_diagrams) == 0:
+            return ([], [], None)
+
+        lifetimes_bootstrap = []
+        for diag in self.persistence_diagrams:
+            if len(diag) <= 1:
+                continue
+            births = np.asarray(diag[1][0])
+            deaths = np.asarray(diag[1][1])
+            lifetimes_bootstrap.append(deaths - births)
+
+        if len(lifetimes_bootstrap) == 0:
+            return ([], [], None)
+
+        lifetimes_bootstrap_arr = np.concatenate(lifetimes_bootstrap)
+        lifetimes_bootstrap_arr = lifetimes_bootstrap_arr[
+            np.isfinite(lifetimes_bootstrap_arr) & (lifetimes_bootstrap_arr > 0)
+        ]
+        if lifetimes_bootstrap_arr.size == 0:
+            return ([], [], None)
+
+        params = gamma.fit(lifetimes_bootstrap_arr, floc=0)
+
+        pvalues_raw_persistence: list[PositiveFloat] = []
+        for loop_track in self.loop_tracks.values():
+            lifetime = float(loop_track.lifetime)
+            p_val = float(
+                1 - gamma.cdf(lifetime, a=params[0], loc=params[1], scale=params[2])
+            )
+            pvalues_raw_persistence.append(p_val)
+
+        match method_pval_correction:
+            case "bonferroni":
+                n_tests = len(pvalues_raw_persistence)
+                pvalues_corrected_persistence = [
+                    p * n_tests for p in pvalues_raw_persistence
+                ]
+            case "benjamini-hochberg":
+                pvalues_corrected_persistence = false_discovery_control(
+                    pvalues_raw_persistence, method="bh"
+                ).tolist()
+            case _:
+                raise ValueError(f"{method_pval_correction} unsupported")
+
+        self.gamma_null_params = (
+            float(params[0]),
+            float(params[1]),
+            float(params[2]),
+        )
+        self.gamma_persistence_results = (
+            pvalues_raw_persistence,
+            pvalues_corrected_persistence,
+        )
+        return (
+            pvalues_raw_persistence,
+            pvalues_corrected_persistence,
+            self.gamma_null_params,
         )
 
 
