@@ -19,6 +19,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 from scipy.sparse import csr_matrix, triu
+from scipy.sparse.linalg import eigsh
 from scipy.spatial.distance import directed_hausdorff
 
 from ..computing.homology import (
@@ -40,6 +41,7 @@ from .types import (
     IndexListDownSample,
     LoopDistMethod,
     MultipleTestCorrectionMethod,
+    PositiveFloat,
     Size_t,
 )
 from .utils import (
@@ -54,8 +56,8 @@ from .utils import (
 class BoundaryMatrix(BaseModel, ABC):
     num_vertices: Size_t
     data: tuple[
-        list[Index_t], list[Index_t]
-    ]  # in coo format (row indices, col indices) of ones
+        list[Index_t], list[Index_t], list[int]
+    ]  # in coo format (row indices, col indices, values)
     shape: tuple[Size_t, Size_t]
     row_simplex_ids: list[Index_t]
     col_simplex_ids: list[Index_t]
@@ -215,17 +217,18 @@ class HomologyData:
         edge_ids_1d, uniq_idx = np.unique(edge_ids_flat, return_index=True)
         row_simplex_diams = edge_diams_flat[uniq_idx]
         edge_ids_reindex = np.searchsorted(edge_ids_1d, edge_ids)
+        num_triangles = len(trig_ids)
+        values = np.tile([1, -1, 1], num_triangles).tolist()
         self.boundary_matrix_d1 = BoundaryMatrixD1(
             num_vertices=self.meta.preprocess.num_vertices,
             data=(
                 edge_ids_reindex.flatten().tolist(),
-                np.repeat(
-                    np.expand_dims(np.arange(edge_ids_reindex.shape[0]), 1), 3, axis=1
-                )
+                np.repeat(np.expand_dims(np.arange(num_triangles), 1), 3, axis=1)
                 .flatten()
                 .tolist(),
+                values,
             ),
-            shape=(len(edge_ids_1d), len(trig_ids)),
+            shape=(len(edge_ids_1d), num_triangles),
             row_simplex_ids=edge_ids_1d.tolist(),
             col_simplex_ids=trig_ids,
             row_simplex_diams=row_simplex_diams.tolist(),
@@ -255,21 +258,31 @@ class HomologyData:
         assert self.boundary_matrix_d1 is not None
         assert self.meta.preprocess
         assert self.meta.preprocess.num_vertices
-        vertex_ids = self._original_vertex_ids
+
+        # important, if downsampled, vertex indecies are no longer sorted
+        vertex_ids = sorted(self._original_vertex_ids)
         vertex_lookup = {
             int(vertex_id): row_idx for row_idx, vertex_id in enumerate(vertex_ids)
         }
         edges = self.boundary_matrix_d1.row_simplex_decode
 
-        one_rows, one_cols = [], []
+        one_rows, one_cols, one_values = [], [], []
         for col_idx, e in enumerate(edges):
-            for v in e:
-                one_rows.append(vertex_lookup[v])
-                one_cols.append(col_idx)
+            # e is a sorted tuple (u, v) from edge decoding
+            # boundary is v - u, so u gets -1 and v gets +1
+            u, v = e[0], e[1]
+
+            one_rows.append(vertex_lookup[u])
+            one_cols.append(col_idx)
+            one_values.append(-1)
+
+            one_rows.append(vertex_lookup[v])
+            one_cols.append(col_idx)
+            one_values.append(1)
 
         self.boundary_matrix_d0 = BoundaryMatrixD0(
             num_vertices=self.meta.preprocess.num_vertices,
-            data=(one_rows, one_cols),
+            data=(one_rows, one_cols, one_values),
             shape=(len(vertex_ids), self.boundary_matrix_d1.shape[0]),
             row_simplex_ids=vertex_ids,
             col_simplex_ids=self.boundary_matrix_d1.row_simplex_ids,
@@ -282,9 +295,79 @@ class HomologyData:
                 f"{self.boundary_matrix_d0.shape[0]} x {self.boundary_matrix_d0.shape[1]}"
             )
 
-    def _compute_hodge_matrix(self):
-        assert self.boundary_matrix_d0 is not None
-        assert self.boundary_matrix_d1 is not None
+    def _compute_hodge_matrix(
+        self, thresh: PositiveFloat, normalized: bool = True
+    ) -> csr_matrix | None:
+        if self.boundary_matrix_d0 is None or self.boundary_matrix_d1 is None:
+            raise ValueError("Boundary matrices must be computed first.")
+
+        d1_rows, d1_cols, d1_vals = self.boundary_matrix_d0.data
+        bd1 = csr_matrix(
+            (d1_vals, (d1_rows, d1_cols)), shape=self.boundary_matrix_d0.shape
+        )
+
+        d2_rows, d2_cols, d2_vals = self.boundary_matrix_d1.data
+        bd2_full = csr_matrix(
+            (d2_vals, (d2_rows, d2_cols)), shape=self.boundary_matrix_d1.shape
+        )
+
+        bd1_bd2 = bd1.dot(bd2_full)
+        assert type(bd1_bd2) is csr_matrix
+        if bd1_bd2.count_nonzero() != 0:
+            raise ValueError("d1 @ d2 is not zero. Simplex orientation is incorrect.")
+
+        triangle_diams = np.array(self.boundary_matrix_d1.col_simplex_diams)
+        cols_use = np.where(triangle_diams <= thresh)[0]
+
+        if cols_use.size == 0:
+            logger.warning(f"No triangles below threshold {thresh}. L1 is d1T*d1 only.")
+            bd2 = csr_matrix(bd2_full.shape)
+        else:
+            bd2 = bd2_full[:, cols_use]
+
+        if normalized:
+            D2 = np.maximum(np.asarray(abs(bd2).sum(axis=1)), 1)
+            D1 = 2 * (abs(bd1) @ D2)
+            D1[D1 == 0] = 1
+            D3 = 1 / 3
+
+            term1 = (
+                bd1.transpose().tocsr().multiply(D2).multiply(1 / D1.reshape(1, -1))
+                @ bd1
+            )
+            term2 = (bd2 @ bd2.transpose()).multiply(1 / D2.reshape(1, -1)) * D3  # type: ignore[attr-defined]
+            L1: csr_matrix = csr_matrix(term1 + term2)
+        else:
+            L1 = csr_matrix(bd1.transpose() @ bd1 + bd2 @ bd2.transpose())
+
+        return L1
+
+    def _compute_hodge_eigendecomposition(
+        self, thresh: PositiveFloat, n_components: int = 10, normalized: bool = True
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        L1 = self._compute_hodge_matrix(thresh=thresh, normalized=normalized)
+
+        if L1 is None:
+            logger.warning("L1 too small for eigendecomposition (shape < 2).")
+            return None
+        assert type(L1) is csr_matrix
+        assert L1.shape is not None
+        if L1.shape[0] < 2:
+            logger.warning("L1 too small for eigendecomposition (shape < 2).")
+            return None
+
+        k = min(n_components, L1.shape[0] - 2)
+        if k <= 0:
+            logger.warning(f"Not enough dimensions for eigendecomposition (k={k}).")
+            return None
+
+        try:
+            eigenvalues, eigenvectors = eigsh(L1, k=k, which="SM")
+            sort_idx = np.argsort(eigenvalues)
+            return eigenvalues[sort_idx], eigenvectors[:, sort_idx]
+        except Exception as e:
+            logger.error(f"Eigendecomposition failed: {e}")
+            return None
 
     # ISSUE: currently, cocycles and loop representatives are de-coupled (for the ease of checking matches for bootstrap)
     def _compute_loop_representatives(
