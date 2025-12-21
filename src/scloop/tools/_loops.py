@@ -38,7 +38,7 @@ def find_loops(
     boundary_thresh = threshold_boundary
     if boundary_thresh is None:
         boundary_thresh = threshold_homology
-    hd._compute_boundary_matrix(adata=adata, thresh=boundary_thresh, verbose=verbose)
+    hd._compute_boundary_matrix_d1(adata=adata, thresh=boundary_thresh, verbose=verbose)
     hd._compute_loop_representatives(
         pairwise_distance_matrix=sparse_dist_mat,
         top_k=n_candidates,
@@ -71,3 +71,7 @@ def find_loops(
     assert hd.bootstrap_data is not None
     hd._test_loops(method_pval_correction="benjamini-hochberg")
     adata.uns["scloop"] = hd
+
+
+def analyze_loop():
+    pass

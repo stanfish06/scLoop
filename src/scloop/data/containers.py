@@ -53,7 +53,9 @@ from .utils import (
 
 class BoundaryMatrix(BaseModel, ABC):
     num_vertices: Size_t
-    data: tuple[list, list]  # in coo format (row indices, col indices) of ones
+    data: tuple[
+        list[Index_t], list[Index_t]
+    ]  # in coo format (row indices, col indices) of ones
     shape: tuple[Size_t, Size_t]
     row_simplex_ids: list[Index_t]
     col_simplex_ids: list[Index_t]
@@ -101,8 +103,6 @@ class BoundaryMatrix(BaseModel, ABC):
 
 
 class BoundaryMatrixD1(BoundaryMatrix):
-    data: tuple[list[Index_t], list[Index_t]]
-
     @property
     def row_simplex_decode(self) -> list[tuple[Index_t, Index_t]]:
         return decode_edges(np.array(self.row_simplex_ids), self.num_vertices)
@@ -110,6 +110,16 @@ class BoundaryMatrixD1(BoundaryMatrix):
     @property
     def col_simplex_decode(self) -> list[tuple[Index_t, Index_t, Index_t]]:
         return decode_triangles(np.array(self.col_simplex_ids), self.num_vertices)
+
+
+class BoundaryMatrixD0(BoundaryMatrix):
+    @property
+    def row_simplex_decode(self) -> list[Index_t]:
+        return self.row_simplex_ids
+
+    @property
+    def col_simplex_decode(self) -> list[tuple[Index_t, Index_t]]:
+        return decode_edges(np.array(self.col_simplex_ids), self.num_vertices)
 
 
 @dataclass
@@ -123,6 +133,7 @@ class HomologyData:
     loop_representatives: list[list[list[int]]] = Field(default_factory=list)
     cocycles: list | None = None
     boundary_matrix_d1: BoundaryMatrixD1 | None = None
+    boundary_matrix_d0: BoundaryMatrixD0 | None = None
     bootstrap_data: BootstrapAnalysis | None = None
     hodge_data: HodgeAnalysis | None = None
 
@@ -180,7 +191,7 @@ class HomologyData:
             self.meta.bootstrap.indices_resample.append(indices_resample)
         return sparse_pairwise_distance_matrix
 
-    def _compute_boundary_matrix(
+    def _compute_boundary_matrix_d1(
         self,
         adata: AnnData,
         thresh: Diameter_t | None = None,
@@ -226,6 +237,55 @@ class HomologyData:
                 f"{self.boundary_matrix_d1.shape[0]} x {self.boundary_matrix_d1.shape[1]}"
             )
 
+    @property
+    def _original_vertex_ids(self):
+        assert self.meta.preprocess is not None
+        assert self.meta.preprocess.num_vertices is not None
+        if self.meta.preprocess.indices_downsample is not None:
+            vertex_ids: IndexListDownSample = self.meta.preprocess.indices_downsample
+        else:
+            vertex_ids = (
+                np.arange(self.meta.preprocess.num_vertices).astype(np.int64).tolist()
+            )
+        # make sure only unique indices
+        assert len(vertex_ids) == len(set(vertex_ids)), "vertex ids must be unqiue"
+        return vertex_ids
+
+    def _compute_boundary_matrix_d0(self, verbose: bool = False):
+        assert self.boundary_matrix_d1 is not None
+        assert self.meta.preprocess
+        assert self.meta.preprocess.num_vertices
+        vertex_ids = self._original_vertex_ids
+        vertex_lookup = {
+            int(vertex_id): row_idx for row_idx, vertex_id in enumerate(vertex_ids)
+        }
+        edges = self.boundary_matrix_d1.row_simplex_decode
+
+        one_rows, one_cols = [], []
+        for col_idx, e in enumerate(edges):
+            for v in e:
+                one_rows.append(vertex_lookup[v])
+                one_cols.append(col_idx)
+
+        self.boundary_matrix_d0 = BoundaryMatrixD0(
+            num_vertices=self.meta.preprocess.num_vertices,
+            data=(one_rows, one_cols),
+            shape=(len(vertex_ids), self.boundary_matrix_d1.shape[0]),
+            row_simplex_ids=vertex_ids,
+            col_simplex_ids=self.boundary_matrix_d1.row_simplex_ids,
+            row_simplex_diams=np.zeros(len(vertex_ids)).tolist(),
+            col_simplex_diams=self.boundary_matrix_d1.row_simplex_diams,
+        )
+        if verbose:
+            logger.info(
+                f"Boundary matrix (dim 0) built: vertices x edges = "
+                f"{self.boundary_matrix_d0.shape[0]} x {self.boundary_matrix_d0.shape[1]}"
+            )
+
+    def _compute_hodge_matrix(self):
+        assert self.boundary_matrix_d0 is not None
+        assert self.boundary_matrix_d1 is not None
+
     # ISSUE: currently, cocycles and loop representatives are de-coupled (for the ease of checking matches for bootstrap)
     def _compute_loop_representatives(
         self,
@@ -249,16 +309,7 @@ class HomologyData:
             loop_births = np.array(self.persistence_diagram[1][0], dtype=np.float32)
             loop_deaths = np.array(self.persistence_diagram[1][1], dtype=np.float32)
             cocycles = self.cocycles[1]
-            if self.meta.preprocess.indices_downsample is not None:
-                vertex_ids: IndexListDownSample = (
-                    self.meta.preprocess.indices_downsample
-                )
-            else:
-                vertex_ids = (
-                    np.arange(pairwise_distance_matrix.shape[0])
-                    .astype(np.int64)
-                    .tolist()
-                )
+            vertex_ids = self._original_vertex_ids
         else:
             assert self.bootstrap_data is not None
             assert len(self.bootstrap_data.persistence_diagrams) > idx_bootstrap
@@ -275,9 +326,7 @@ class HomologyData:
                 dtype=np.float32,
             )
             cocycles = self.bootstrap_data.cocycles[idx_bootstrap][1]
-            vertex_ids: IndexListDownSample = self.meta.bootstrap.indices_resample[
-                idx_bootstrap
-            ]
+            vertex_ids = self.meta.bootstrap.indices_resample[idx_bootstrap]
 
         if loop_births.size == 0:
             return [], []

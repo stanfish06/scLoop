@@ -110,6 +110,9 @@ def compute_persistence_diagram_and_cocycles(
 def compute_boundary_matrix_data(
     adata: AnnData, meta: ScloopMeta, thresh: Diameter_t | None = None, **nei_kwargs
 ) -> tuple:
+    """
+    Compute both D0 and D1 boundary matrices
+    """
     assert meta.preprocess is not None
     assert meta.preprocess.num_vertices is not None
     sparse_pairwise_distance_matrix, vertex_indices = compute_sparse_pairwise_distance(
@@ -118,12 +121,14 @@ def compute_boundary_matrix_data(
     result = get_boundary_matrix(sparse_pairwise_distance_matrix.tocoo(), thresh)
     triangles_local = np.asarray(result.triangle_vertices, dtype=np.int64)
     if len(triangles_local) == 0:
-        edge_ids, trig_ids, edge_diameters = [], [], []
+        edge_ids, trig_ids, edge_diameters, vertex_indices_np = [], [], [], np.array([])
     else:
         if vertex_indices is None:
+            assert sparse_pairwise_distance_matrix.shape is not None
             vertex_indices_np = np.arange(sparse_pairwise_distance_matrix.shape[0])
         else:
             vertex_indices_np = np.asarray(vertex_indices, dtype=np.int64)
+        # important: must convert triangle vertex ids to global indices
         triangles = vertex_indices_np[triangles_local]
         # NOTE: edges and triangles are encoded based on the total number of vertices, not the downsampled number
         edge_ids, trig_ids = encode_triangles_and_edges(
@@ -145,7 +150,7 @@ def compute_boundary_matrix_data(
         trig_ids,
         edge_diameters,
         sparse_pairwise_distance_matrix,
-        vertex_indices,
+        vertex_indices_np.tolist(),
     )
 
 
