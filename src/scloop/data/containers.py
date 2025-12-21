@@ -39,6 +39,7 @@ from .types import (
     IndexListDownSample,
     LoopDistMethod,
     MultipleTestCorrectionMethod,
+    Percent_t,
     PositiveFloat,
     Size_t,
 )
@@ -344,7 +345,7 @@ class HomologyData:
     def _compute_hodge_analysis_for_track(
         self,
         track_id: int,
-        life_pct: float | None = None,
+        life_pct: Percent_t | None = None,
         n_hodge_components: int = 10,
         normalized: bool = True,
     ) -> None:
@@ -361,7 +362,7 @@ class HomologyData:
                 life_pct = self.meta.bootstrap.life_pct
             else:
                 raise ValueError("life_pct not provided and not found in metadata")
-
+        assert life_pct is not None
         birth_t = track.birth_root
         death_t = track.death_root
         thresh_t = birth_t + (death_t - birth_t) * life_pct
@@ -404,7 +405,7 @@ class HomologyData:
         bootstrap: bool = False,
         idx_bootstrap: int = 0,
         n_reps_per_loop: int = 4,
-        life_pct: float = 0.1,
+        life_pct: Percent_t = 0.1,
         n_cocycles_used: int = 3,
         n_force_deviate: int = 4,
         k_yen: int = 8,

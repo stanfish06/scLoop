@@ -13,6 +13,7 @@ Index_t = Annotated[int, Field(ge=0)]
 Size_t = Annotated[int, Field(ge=0)]
 Count_t = Annotated[int, Field(ge=0)]
 Diameter_t = Annotated[float, Field(ge=0)]
+Percent_t = Annotated[float, Field(ge=0, le=0)]
 PositiveFloat = Annotated[float, Field(ge=0)]
 SizeDownSample = Annotated[
     int, Field(ge=2, description="Sample to this number of cells")

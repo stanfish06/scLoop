@@ -29,8 +29,8 @@ class LoopMatch:
 @dataclass
 class LoopTrack:
     source_class_idx: int
-    birth_root: float
-    death_root: float
+    birth_root: PositiveFloat
+    death_root: PositiveFloat
     matches: list[LoopMatch] = Field(default_factory=list)
     hodge_analysis: HodgeAnalysis | None = None
 
