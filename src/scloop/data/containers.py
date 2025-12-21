@@ -317,7 +317,9 @@ class HomologyData:
         cols_use = np.where(triangle_diams <= thresh)[0]
 
         if cols_use.size == 0:
-            logger.warning(f"No triangles below threshold {thresh}. L1 is d1T*d1 only.")
+            logger.warning(
+                f"No triangles below threshold {thresh}. hodge_matrix_d1 is d1T*d1 only."
+            )
             bd2 = csr_matrix(bd2_full.shape)
         else:
             bd2 = bd2_full[:, cols_use]
@@ -333,11 +335,66 @@ class HomologyData:
                 @ bd1
             )
             term2 = (bd2 @ bd2.transpose()).multiply(1 / D2.reshape(1, -1)) * D3  # type: ignore[attr-defined]
-            L1: csr_matrix = csr_matrix(term1 + term2)
+            hodge_matrix_d1: csr_matrix = csr_matrix(term1 + term2)
         else:
-            L1 = csr_matrix(bd1.transpose() @ bd1 + bd2 @ bd2.transpose())
+            hodge_matrix_d1 = csr_matrix(bd1.transpose() @ bd1 + bd2 @ bd2.transpose())
 
-        return L1
+        return hodge_matrix_d1
+
+    def _compute_hodge_analysis_for_track(
+        self,
+        track_id: int,
+        life_pct: float | None = None,
+        n_hodge_components: int = 10,
+        normalized: bool = True,
+    ) -> None:
+        assert self.bootstrap_data is not None
+        assert track_id in self.bootstrap_data.loop_tracks
+
+        track = self.bootstrap_data.loop_tracks[track_id]
+
+        if life_pct is None:
+            if (
+                self.meta.bootstrap is not None
+                and self.meta.bootstrap.life_pct is not None
+            ):
+                life_pct = self.meta.bootstrap.life_pct
+            else:
+                raise ValueError("life_pct not provided and not found in metadata")
+
+        birth_t = track.birth_root
+        death_t = track.death_root
+        thresh_t = birth_t + (death_t - birth_t) * life_pct
+
+        hodge_matrix_d1 = self._compute_hodge_matrix(
+            thresh=thresh_t, normalized=normalized
+        )
+        if hodge_matrix_d1 is None:
+            logger.warning(f"Could not compute Hodge matrix for track {track_id}")
+            return
+
+        result = track._compute_hodge_eigendecomposition(
+            hodge_matrix=hodge_matrix_d1,
+            n_components=n_hodge_components,
+            normalized=normalized,
+        )
+
+        if result is None:
+            logger.warning(f"Eigendecomposition failed for track {track_id}")
+            return
+
+        eigenvalues, eigenvectors = result
+
+        from .analysis_containers import HodgeAnalysis
+
+        track.hodge_analysis = HodgeAnalysis(
+            loop_id=track_id,
+            hodge_eigenvalues=eigenvalues.tolist(),
+            hodge_eigenvectors=eigenvectors,
+            loops_edges_embedding=None,
+            pseudotime_analysis=None,
+            velociy_analysis=None,
+        )
 
     # ISSUE: currently, cocycles and loop representatives are de-coupled (for the ease of checking matches for bootstrap)
     def _compute_loop_representatives(

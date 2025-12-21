@@ -32,6 +32,7 @@ class PreprocessMeta(BaseModel):
 # TODO: store significant loop data
 class BootstrapMeta(BaseModel):
     indices_resample: list[IndexListDownSample] | None = None
+    life_pct: float | None = None
 
 
 class ScloopMeta(BaseModel):

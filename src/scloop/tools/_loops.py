@@ -34,6 +34,11 @@ def find_loops(
     verbose: bool = False,
 ) -> None:
     meta = _get_scloop_meta(adata)
+    if meta.bootstrap is None:
+        from ..data.metadata import BootstrapMeta
+
+        meta.bootstrap = BootstrapMeta()
+    meta.bootstrap.life_pct = tightness_loops
     hd: HomologyData = HomologyData(meta=meta)
     sparse_dist_mat = hd._compute_homology(adata=adata, thresh=threshold_homology)
     boundary_thresh = threshold_boundary
@@ -77,9 +82,27 @@ def find_loops(
 def analyze_loops(
     adata: AnnData,
     track_ids: list[Index_t] | None = None,
-):
-    assert adata.uns["scloop"] is not None
+    n_hodge_components: Annotated[int, Field(ge=1)] = 10,
+    normalized: bool = True,
+) -> None:
+    if "scloop" not in adata.uns:
+        raise ValueError("Run find_loops() first")
+
     hd: HomologyData = adata.uns["scloop"]
-    # loop through selected tracks and do hodge analysis
-    # use same life_pct as find_loops
-    pass
+
+    if hd.boundary_matrix_d0 is None:
+        hd._compute_boundary_matrix_d0()
+
+    assert hd.bootstrap_data is not None
+    track_ids_avail = list(hd.bootstrap_data.loop_tracks.keys())
+    if track_ids is None:
+        track_ids = track_ids_avail
+
+    for track_id in track_ids:
+        if track_id not in track_ids_avail:
+            continue
+        hd._compute_hodge_analysis_for_track(
+            track_id=track_id,
+            n_hodge_components=n_hodge_components,
+            normalized=normalized,
+        )

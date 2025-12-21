@@ -214,11 +214,11 @@ class BootstrapAnalysis:
         )
 
 
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class HodgeAnalysis:
     loop_id: Index_t
     hodge_eigenvalues: list | None = None
-    hodge_eigenvectors: list | None = None
+    hodge_eigenvectors: np.ndarray | None = None
     loops_edges_embedding: list | None = None
     pseudotime_analysis: PseudotimeAnalysis | None = None
     velociy_analysis: VelocityAnalysis | None = None
