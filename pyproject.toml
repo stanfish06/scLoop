@@ -19,7 +19,7 @@ requires = [ "cython>=3.0.12", "setuptools>=74.1" ]
 
 [project]
 name = "scloop"
-version = "0.1.5"
+version = "0.1.6"
 description = "single-cell loop analysis"
 readme = "README.md"
 authors = [
