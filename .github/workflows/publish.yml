@@ -7,44 +7,158 @@ on:
       - v*
 
 jobs:
-  run:
+  build-wheels:
+    name: Build wheels (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux
+            cibw_archs: x86_64
+            cibw_build: cp312-manylinux_x86_64
+            before_linux: |
+              yum install -y autoconf automake libtool m4
+              cd {project}
+              unset CFLAGS LDFLAGS CPLUS_INCLUDE_PATH
+              make build-m4ri
+            env_linux: >
+              CFLAGS="-I{project}/src/scloop/utils/linear_algebra_gf2/include"
+              LDFLAGS="-L{project}/src/scloop/utils/linear_algebra_gf2"
+              CPLUS_INCLUDE_PATH="{project}/src/scloop/data:{project}/src/scloop/utils/distance_metrics"
+          - os: macos-14
+            label: macos
+            cibw_archs: "x86_64 arm64"
+            cibw_build: cp312-macosx_*
+            before_macos: |
+              brew install autoconf automake libtool llvm libomp
+              export PATH="$(brew --prefix llvm)/bin:$PATH"
+              cd {project}
+              CC="$(brew --prefix llvm)/bin/clang" CXX="$(brew --prefix llvm)/bin/clang++" \
+                CFLAGS="-fopenmp -O3 -fPIC" \
+                LDFLAGS="-L$(brew --prefix llvm)/lib -Wl,-rpath,$(brew --prefix llvm)/lib -lomp" \
+                make build-m4ri
+            env_macos: >
+              CC="/opt/homebrew/opt/llvm/bin/clang"
+              CXX="/opt/homebrew/opt/llvm/bin/clang++"
+              CFLAGS="-I{project}/src/scloop/utils/linear_algebra_gf2/include -fopenmp"
+              LDFLAGS="-L{project}/src/scloop/utils/linear_algebra_gf2 -Wl,-rpath,{project}/src/scloop/utils/linear_algebra_gf2 -L/opt/homebrew/opt/llvm/lib -Wl,-rpath,/opt/homebrew/opt/llvm/lib -lomp"
+              CPLUS_INCLUDE_PATH="{project}/src/scloop/data:{project}/src/scloop/utils/distance_metrics"
+          - os: windows-2022
+            label: windows
+            cibw_archs: AMD64
+            cibw_build: cp312-win_amd64
+            before_windows: |
+              bash -lc "cd $(cygpath '{project}') && make build-m4ri"
+            env_windows: >
+              MSYSTEM=UCRT64
+              CC=x86_64-w64-mingw32-gcc
+              CXX=x86_64-w64-mingw32-g++
+              CFLAGS="-I{project}/src/scloop/utils/linear_algebra_gf2/include -O3 -fopenmp"
+              LDFLAGS="-L{project}/src/scloop/utils/linear_algebra_gf2 -fopenmp"
+              CPLUS_INCLUDE_PATH="{project}/src/scloop/data:{project}/src/scloop/utils/distance_metrics"
+            config_settings_windows: >
+              --global-option=build_ext --global-option=--compiler=mingw32
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install MSYS2 toolchain
+        if: matrix.label == 'windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: >-
+            autoconf
+            automake
+            libtool
+            make
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-libomp
+
+      - name: Install cibuildwheel
+        run: python -m pip install cibuildwheel
+
+      - name: Build wheels
+        run: python -m cibuildwheel --output-dir wheelhouse
+        env:
+          CIBW_BUILD: ${{ matrix.cibw_build }}
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+          CIBW_BEFORE_ALL_LINUX: ${{ matrix.before_linux || '' }}
+          CIBW_BEFORE_ALL_MACOS: ${{ matrix.before_macos || '' }}
+          CIBW_BEFORE_ALL_WINDOWS: ${{ matrix.before_windows || '' }}
+          CIBW_ENVIRONMENT_LINUX: ${{ matrix.env_linux || '' }}
+          CIBW_ENVIRONMENT_MACOS: ${{ matrix.env_macos || '' }}
+          CIBW_ENVIRONMENT_WINDOWS: ${{ matrix.env_windows || '' }}
+          CIBW_CONFIG_SETTINGS_WINDOWS: ${{ matrix.config_settings_windows || '' }}
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.label }}
+          path: wheelhouse/*.whl
+
+  build-sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool m4 build-essential
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build source distribution
+        run: |
+          python -m pip install build
+          make build-m4ri
+          python -m build --sdist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  publish:
+    needs:
+      - build-wheels
+      - build-sdist
     runs-on: ubuntu-latest
     environment:
       name: pypi
     permissions:
       id-token: write
       contents: read
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
         with:
-          submodules: recursive
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-      - name: Set up Python
-        uses: actions/setup-python@v5
+          merge-multiple: true
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          python-version: '3.12'
-      - name: Install cibuildwheel
-        run: python -m pip install cibuildwheel
-      - name: Build wheels
-        run: python -m cibuildwheel --output-dir dist
-        env:
-          CIBW_BUILD: cp312-manylinux_x86_64
-          CIBW_BEFORE_ALL_LINUX: |
-            yum install -y autoconf automake libtool m4
-            cd {project}
-            unset CFLAGS LDFLAGS CPLUS_INCLUDE_PATH
-            make build-m4ri
-          CIBW_ENVIRONMENT: >
-            CFLAGS="-I{project}/src/scloop/utils/linear_algebra_gf2/include"
-            LDFLAGS="-L{project}/src/scloop/utils/linear_algebra_gf2"
-            CPLUS_INCLUDE_PATH="{project}/src/scloop/data:{project}/src/scloop/utils/distance_metrics"
-      - name: Build source distribution
-        run: |
-          python -m pip install build
-          python -m build --sdist
-      - name: Publish
-        run: |
-          python -m pip install uv
-          uv publish
+          packages_dir: dist
