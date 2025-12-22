@@ -376,6 +376,7 @@ def loops(
         emb = adata.obsm[f"X_{basis}"]
     else:
         raise KeyError(f"Embedding {basis} not found in adata.obsm.")
+    assert type(emb) is np.ndarray
 
     if track_ids is not None and loop_ids is not None:
         raise ValueError("Only one of track_ids or loop_ids can be provided.")
@@ -416,52 +417,27 @@ def loops(
         **(kwargs_scatter or {}),
     )
 
-    def _loops_to_coords(loop_vertices: list[int]) -> np.ndarray:
-        coords = np.asarray(emb[np.asarray(loop_vertices, dtype=int)])
-        if coords.shape[0] > 2:
-            coords = np.vstack([coords, coords[0]])
-        return coords
+    include_bootstrap = show_bootstrap and data.bootstrap_data is not None
 
     def _loops_for_selector(
         selector: Index_t | tuple[Index_t, Index_t],
     ) -> list[np.ndarray]:
-        loops_plot: list[np.ndarray] = []
+        # only allow explicit bootstrap selectors when bootstrap data is available
+        if isinstance(selector, tuple) and not include_bootstrap:
+            return []
         if isinstance(selector, int):
-            if selector < len(data.loop_representatives):
-                loops_plot.extend(
-                    [
-                        _loops_to_coords(loop)
-                        for loop in data.loop_representatives[selector]
-                    ]
-                )
-            if show_bootstrap and data.bootstrap_data is not None:
-                tracked_pairs = _get_track_loop(data, selector)
-                for tid in tracked_pairs:
-                    if tid[0] == 0:
-                        continue
-                    if (tid[0] - 1) >= len(data.bootstrap_data.loop_representatives):
-                        continue
-                    boot_loops_all = data.bootstrap_data.loop_representatives[
-                        tid[0] - 1
-                    ]
-                    if tid[1] >= len(boot_loops_all):
-                        continue
-                    loops_plot.extend(
-                        [_loops_to_coords(loop) for loop in boot_loops_all[tid[1]]]
-                    )
-        else:
-            if not show_bootstrap or data.bootstrap_data is None:
-                return loops_plot
-            idx_bootstrap, target_class_idx = selector
-            if idx_bootstrap >= len(data.bootstrap_data.loop_representatives):
-                return loops_plot
-            boot_loops_all = data.bootstrap_data.loop_representatives[idx_bootstrap]
-            if target_class_idx >= len(boot_loops_all):
-                return loops_plot
-            loops_plot.extend(
-                [_loops_to_coords(loop) for loop in boot_loops_all[target_class_idx]]
+            if data.loop_representatives is None:
+                return []
+            if selector >= len(data.loop_representatives):
+                return []
+        try:
+            return data._get_loop_embedding(
+                embedding=emb,
+                selector=selector,
+                include_bootstrap=include_bootstrap,
             )
-        return loops_plot
+        except AssertionError:
+            return []
 
     for i, selector in enumerate(selectors):
         loops_plot = _loops_for_selector(selector)

@@ -48,6 +48,7 @@ from .utils import (
     decode_triangles,
     extract_edges_from_coo,
     loop_vertices_to_edge_ids,
+    loops_to_coords,
     nearest_neighbor_per_row,
 )
 
@@ -503,6 +504,44 @@ class HomologyData:
                     loops
                 )
 
+    def _get_loop_embedding(
+        self,
+        embedding: np.ndarray,
+        selector: Index_t | tuple[Index_t, Index_t],
+        include_bootstrap: bool = True,
+    ):
+        loops = []
+        match selector:
+            case int():
+                assert selector < len(self.loop_representatives)
+                loops.extend(
+                    loops_to_coords(
+                        embedding=embedding,
+                        loops_vertices=self.loop_representatives[selector],
+                    )
+                )
+                if include_bootstrap:
+                    assert self.bootstrap_data is not None
+                    loops.extend(
+                        self.bootstrap_data._get_track_embedding(
+                            embedding=embedding, idx_track=selector
+                        )
+                    )
+            case tuple():
+                assert self.bootstrap_data is not None
+                assert selector[0] < len(self.bootstrap_data.loop_representatives)
+                assert selector[1] < len(
+                    self.bootstrap_data.loop_representatives[selector[0]]
+                )
+                loops.extend(
+                    self.bootstrap_data._get_loop_embedding(
+                        embedding=embedding,
+                        idx_bootstrap=selector[0],
+                        idx_loop=selector[1],
+                    )
+                )
+        return loops
+
     def _assess_bootstrap_geometric_equivalence(
         self,
         adata: AnnData,
@@ -518,25 +557,32 @@ class HomologyData:
 
         if idx_bootstrap >= len(self.bootstrap_data.loop_representatives):
             return (source_class_idx, target_class_idx, np.nan)
-        if source_class_idx >= len(self.loop_representatives):
+        if self.loop_representatives is None or source_class_idx >= len(
+            self.loop_representatives
+        ):
             return (source_class_idx, target_class_idx, np.nan)
 
         boot_loops_all = self.bootstrap_data.loop_representatives[idx_bootstrap]
         if target_class_idx >= len(boot_loops_all):
             return (source_class_idx, target_class_idx, np.nan)
 
-        source_loops = self.loop_representatives[source_class_idx]
-        target_loops = boot_loops_all[target_class_idx]
+        emb = adata.obsm[f"X_{self.meta.preprocess.embedding_method}"]
+        assert type(emb) is np.ndarray
+        source_coords_list = self._get_loop_embedding(
+            embedding=emb, selector=source_class_idx, include_bootstrap=False
+        )
+        target_coords_list = self._get_loop_embedding(
+            embedding=emb,
+            selector=(idx_bootstrap, target_class_idx),
+            include_bootstrap=False,
+        )
 
-        if len(source_loops) == 0 or len(target_loops) == 0:
+        if len(source_coords_list) == 0 or len(target_coords_list) == 0:
             return (source_class_idx, target_class_idx, np.nan)
 
-        emb = adata.obsm[f"X_{self.meta.preprocess.embedding_method}"]
         distances = []
-        for source_loop in source_loops:
-            for target_loop in target_loops:
-                source_coords = emb[source_loop]
-                target_coords = emb[target_loop]
+        for source_coords in source_coords_list:
+            for target_coords in target_coords_list:
                 try:
                     dist = max(
                         directed_hausdorff(source_coords, target_coords)[0],
@@ -556,7 +602,6 @@ class HomologyData:
         idx_bootstrap: int = 0,
         n_pairs_check: int = 10,
     ) -> tuple[int, int, bool]:
-        assert self.boundary_matrix_d1 is not None
         assert self.loop_representatives is not None
         assert self.bootstrap_data is not None
         self._ensure_loop_tracks()
@@ -583,8 +628,10 @@ class HomologyData:
         mask_a = self._loops_to_edge_mask(source_loops)
         mask_b = self._loops_to_edge_mask(target_loops)
 
+        boundary_matrix_d1 = self.boundary_matrix_d1
+        assert boundary_matrix_d1 is not None
         results, _ = compute_loop_homological_equivalence(
-            boundary_matrix_d1=self.boundary_matrix_d1,
+            boundary_matrix_d1=boundary_matrix_d1,
             loop_mask_a=mask_a,
             loop_mask_b=mask_b,
             n_pairs_check=n_pairs_check,

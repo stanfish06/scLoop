@@ -11,6 +11,7 @@ from pydantic.dataclasses import dataclass
 
 from ..data.containers import HomologyData
 from ..data.metadata import CrossDatasetMatchingMeta
+from ..data.types import Index_t
 from .data_modules import nnRegressorDataModule
 from .mlp import MLPregressor
 from .nf import NeuralODEregressor
@@ -63,19 +64,22 @@ class CrossDatasetMatcher:
         ref_key = self.meta.reference_embedding_keys[ref_idx]
 
         for dataset_idx, adata in enumerate(self.adatas):
-            hd = self.homology_data_list[dataset_idx]
-
             if dataset_idx == ref_idx:
                 ref_emb = adata.obsm[ref_key]
             else:
                 shared_emb = np.array(adata.obsm[self.meta.shared_embedding_key])
                 assert self.mapping_model is not None
                 ref_emb = self.mapping_model.predict_new(shared_emb)
-                adata.obsm[f"mapping_{self.meta.shared_embedding_key}_{ref_key}"] = (
-                    ref_emb
-                )
+            adata.obsm["scloop_mapping"] = ref_emb
 
-    def _compute_pairwise_distances(self, method: str = "hausdorff"):
+    def _compute_pairwise_distances(
+        self,
+        source_datset_idx: Index_t,
+        target_dataset_idx: Index_t,
+        include_bootstrap: bool = True,
+        method: str = "hausdorff",
+    ):
+        # ideally should include all bootstrap loops? if too costly to run, try limit the number
         pass
 
     def _permutation_test(self, n_permutations: int = 1000):

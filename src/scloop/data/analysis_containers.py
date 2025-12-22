@@ -13,6 +13,7 @@ from scipy.stats import false_discovery_control, fisher_exact, gamma
 from scipy.stats.contingency import odds_ratio
 
 from .types import Count_t, Index_t, MultipleTestCorrectionMethod, PositiveFloat, Size_t
+from .utils import loops_to_coords
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
@@ -42,6 +43,12 @@ class LoopTrack:
     @property
     def lifetime(self) -> PositiveFloat:
         return self.death_root - self.birth_root
+
+    @property
+    def track_ipairs(self) -> list[tuple[Index_t, Index_t]]:
+        if self.matches is None:
+            return []
+        return [(m.idx_bootstrap, m.target_class_idx) for m in self.matches]
 
     def _compute_hodge_eigendecomposition(
         self, hodge_matrix: csr_matrix, n_components: int = 10, normalized: bool = True
@@ -89,6 +96,28 @@ class BootstrapAnalysis:
         tuple[list[PositiveFloat], list[PositiveFloat]] | None
     ) = None
     gamma_null_params: tuple[PositiveFloat, PositiveFloat, PositiveFloat] | None = None
+
+    def _get_track_embedding(
+        self, idx_track: Index_t, embedding: np.ndarray
+    ) -> list[np.ndarray]:
+        assert idx_track < len(self.loop_tracks)
+        loops = []
+        for boot_id, loop_id in self.loop_tracks[idx_track].track_ipairs:
+            loops.extend(
+                loops_to_coords(
+                    embedding=embedding,
+                    loops_vertices=self.loop_representatives[boot_id][loop_id],
+                )
+            )
+        return loops
+
+    def _get_loop_embedding(
+        self, idx_bootstrap: Index_t, idx_loop: Index_t, embedding: np.ndarray
+    ) -> list[np.ndarray]:
+        return loops_to_coords(
+            embedding=embedding,
+            loops_vertices=self.loop_representatives[idx_bootstrap][idx_loop],
+        )
 
     @property
     def _n_total_matches(self) -> Count_t:
