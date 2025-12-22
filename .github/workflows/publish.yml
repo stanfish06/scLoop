@@ -51,9 +51,10 @@ jobs:
             cibw_archs: AMD64
             cibw_build: cp312-win_amd64
             before_windows: |
-              bash -lc "cd $(cygpath '{project}') && make build-m4ri"
+              msys2 -c "export PATH=/usr/bin:$PATH; cd {project} && make build-m4ri"
             env_windows: >
               MSYSTEM=UCRT64
+              MSYS2_PATH_TYPE=inherit
               CC=x86_64-w64-mingw32-gcc
               CXX=x86_64-w64-mingw32-g++
               CFLAGS="-I{project}/src/scloop/utils/linear_algebra_gf2/include -O3 -fopenmp"
