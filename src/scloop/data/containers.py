@@ -49,6 +49,7 @@ from .utils import (
     decode_triangles,
     extract_edges_from_coo,
     loop_vertices_to_edge_ids,
+    loops_masks_to_edges_masks,
     loops_to_coords,
     nearest_neighbor_per_row,
 )
@@ -430,7 +431,35 @@ class HomologyData:
             values_vertices=values_vertices,
         )
 
-    # ISSUE: currently, cocycles and loop representatives are de-coupled (for the ease of checking matches for bootstrap)
+        """
+        ============= edge embedding =============
+        - compute edge masks for loops
+        - embed edges using edge masks and hodge
+        ==========================================
+        """
+        for loop in track.hodge_analysis.selected_loop_classes:
+            assert loop.representatives is not None
+            """
+            each row contains a single loop of a loop class
+            ┌                                   ┐
+            │ n_loops x n_edges_boundary_matrix │
+            └                                   ┘
+            """
+            loops_mask = self._loops_to_edge_mask(loop.representatives)
+            """
+            each row contains a single edges of the loop
+            ┌                                            ┐
+            │ n_edges_per_loop x n_edges_boundary_matrix │
+            └                                            ┘
+            edge can then be embedded with element-wise gradient encode and eigenvectors
+                                             ┌                                            ┐
+            edge_gradients ⊙  each column of │ n_edges_per_loop x n_edges_boundary_matrix │
+                                             └                                            ┘
+            """
+            track.hodge_analysis.edges_masks_loop_classes.append(
+                loops_masks_to_edges_masks(loops_mask)
+            )
+
     def _compute_loop_representatives(
         self,
         pairwise_distance_matrix: csr_matrix,

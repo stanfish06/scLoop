@@ -291,11 +291,33 @@ class LoopClassAnalysis(LoopClass):
         )
 
 
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class HodgeAnalysis:
     hodge_eigenvalues: list | None = None
     hodge_eigenvectors: list | None = None
+    edges_masks_loop_classes: list[list[np.ndarray]] = Field(default_factory=list)
     selected_loop_classes: list[LoopClassAnalysis] = Field(default_factory=list)
+
+    def _embed_edges(self):
+        if self.hodge_eigenvectors is None:
+            return
+
+        hodge_evecs = np.array(self.hodge_eigenvectors)
+
+        for loop_idx, loop in enumerate(self.selected_loop_classes):
+            if loop.edge_gradient_raw is None:
+                continue
+
+            edge_masks = self.edges_masks_loop_classes[loop_idx]
+            loop.edge_embedding_raw = []
+
+            for rep_idx, edge_mask in enumerate(edge_masks):
+                edge_gradients = loop.edge_gradient_raw[rep_idx]
+                edge_evec_values = edge_mask.astype(np.float64) @ hodge_evecs.T
+                edge_embedding = (
+                    edge_gradients[:, :, None] * edge_evec_values[:, None, :]
+                )
+                loop.edge_embedding_raw.append(edge_embedding)
 
     def _smoothening_edge_embedding(self):
         # update edge_embedding_smooth: gaussian smooth of edge embedding using the coordinates_edges

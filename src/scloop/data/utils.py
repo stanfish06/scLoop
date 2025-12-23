@@ -102,7 +102,7 @@ def loop_vertices_to_edge_ids(
     edge_ids = np.empty(n, dtype=np.int64)
     for k in range(n):
         i = loop_vertices[k]
-        j = loop_vertices[(k + 1) % n]
+        j = loop_vertices[(k + 1) % n]  # this allows loop goes back to start
         edge_ids[k] = edge_idx_encode(int(i), int(j), num_vertices)
     return edge_ids
 
@@ -122,6 +122,20 @@ def edge_ids_to_rows(edge_ids: np.ndarray, edge_row_ids: np.ndarray) -> np.ndarr
             rows[count] = row
             count += 1
     return rows[:count]
+
+
+@jit(nopython=True)
+def loops_masks_to_edges_masks(loops_mask: np.ndarray) -> list[np.ndarray]:
+    n_loops, n_edges = loops_mask.shape
+    result = []
+    for i in range(n_loops):
+        edge_indices = np.where(loops_mask[i, :])[0]
+        n_true_edges = len(edge_indices)
+        edge_masks = np.zeros((n_true_edges, n_edges), dtype=np.bool_)
+        for j in range(n_true_edges):
+            edge_masks[j, edge_indices[j]] = True
+        result.append(edge_masks)
+    return result
 
 
 @jit(nopython=True)
