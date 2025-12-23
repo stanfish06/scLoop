@@ -33,7 +33,7 @@ class LoopTrack:
     hodge_analysis: HodgeAnalysis | None = None
 
     @property
-    # it is possible to have one-to-many matches
+    # it is possible to have one-to-many matches (need a way to select best match)
     def n_matches(self) -> Count_t:
         return len({m.idx_bootstrap for m in self.matches})
 
@@ -256,32 +256,50 @@ class BootstrapAnalysis:
         )
 
 
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
+class LoopClassAnalysis(LoopClass):
+    coordinates_vertices: list[np.ndarray] | None = None
+    coordinates_edges: list[np.ndarray] | None = None
+    edge_gradient_raw: list[np.ndarray] | None = None
+    edge_embedding_raw: list[np.ndarray] | None = None
+    edge_embedding_smooth: list[np.ndarray] | None = None
+
+    @classmethod
+    def from_super(
+        cls, super_obj: LoopClass, embedding: np.ndarray, values_vertices: np.ndarray
+    ):
+        assert super_obj.representatives is not None
+        super_kwargs = super_obj.model_dump()  # type: ignore[reportAttributeAccessIssue]
+        coordinates_vertices = loops_to_coords(
+            embedding=embedding, loops_vertices=super_obj.representatives
+        )
+        coordinates_edges = [
+            (emb[0:-1, :] + emb[1:, :]) / 2 for emb in coordinates_vertices
+        ]
+        edge_gradient_raw = loops_to_coords(
+            embedding=values_vertices, loops_vertices=super_obj.representatives
+        )
+        edge_gradient_raw = [
+            (vals[0:-1, :] + vals[1:, :]) / 2 for vals in edge_gradient_raw
+        ]
+        return cls(
+            **super_kwargs,
+            coordinates_vertices=coordinates_vertices,
+            coordinates_edges=coordinates_edges,
+            edge_gradient_raw=edge_gradient_raw,
+        )
+
+
 @dataclass
 class HodgeAnalysis:
-    loop_id: Index_t
     hodge_eigenvalues: list | None = None
     hodge_eigenvectors: list | None = None
-    pseudotime_analysis: PseudotimeAnalysis | None = None
-    velociy_analysis: VelocityAnalysis | None = None
+    selected_loop_classes: list[LoopClassAnalysis] | None = None
 
     def _smoothening_edge_embedding(self):
+        # update edge_embedding_smooth: gaussian smooth of edge embedding using the coordinates_edges
         pass
 
     def _trajectory_identification(self):
+        # identify trajectories using raw/smooth edge emebedding
         pass
-
-
-@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
-class PseudotimeAnalysis:
-    loops_edges_embedding: list | None = None
-    edge_pseudotime_deltas: np.ndarray | None = None
-    pseudotime_source: str = ""
-    parameters: dict = Field(default_factory=dict)
-
-
-@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
-class VelocityAnalysis:
-    loops_edges_embedding: list | None = None
-    edge_velocity_deltas: np.ndarray | None = None
-    velocity_source: str = ""
-    parameters: dict = Field(default_factory=dict)

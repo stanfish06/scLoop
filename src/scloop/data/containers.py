@@ -128,7 +128,7 @@ class BoundaryMatrixD0(BoundaryMatrix):
 @dataclass
 class HomologyData:
     """
-    store core homology data and associated analysis data
+    store core homology data and associated analysis data (quite heavy as of now, probably need to split things up a bit)
     """
 
     meta: ScloopMeta
