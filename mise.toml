@@ -48,7 +48,7 @@ run = [
     "uv --version",
     "python --version",
 	"echo $CPLUS_INCLUDE_PATH",
-	"tree -L 3 -I '__pycache__|*.pyc|*.so|archive|m4ri|*~' src/scloop/"
+	"tree -L 3 -I '__pycache__|include|pkgconfig|*.a|*.la|*.pyc|*.so|archive|m4ri|*~' src/scloop/"
 ]
 
 [tasks.bump]
