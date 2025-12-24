@@ -23,8 +23,7 @@ version = "0.1.10"
 description = "single-cell loop analysis"
 readme = "README.md"
 authors = [
-  { name = "Zhiyuan(Stan) Yu", email = "zyyu@umich.edu" },
-  { name = "Idse Heemskerk", email = "idse.heemskerk@gmail.com" },
+  { name = "Zhiyuan(Stan) Yu and Idse Heemskerk", email = "zyyu@umich.edu" },
 ]
 requires-python = ">=3.12"
 # tensorflow hasn't supported 3.13 yet
