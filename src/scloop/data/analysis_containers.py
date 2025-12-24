@@ -4,13 +4,13 @@ from __future__ import annotations
 from typing import Optional
 
 import numpy as np
-from pydantic import ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.dataclasses import dataclass
 from pynndescent import NNDescent
 from scipy.stats import false_discovery_control, fisher_exact, gamma
 from scipy.stats.contingency import odds_ratio
 
-from .base_components import LoopClass
+from .base_components import LoopClass, PersistenceTestResult, PresenceTestResult
 from .types import Count_t, Index_t, MultipleTestCorrectionMethod, PositiveFloat, Size_t
 from .utils import loops_to_coords
 
@@ -49,19 +49,8 @@ class BootstrapAnalysis:
     cocycles: list[list] = Field(default_factory=list)
     selected_loop_classes: list[list[LoopClass | None]] = Field(default_factory=list)
     loop_tracks: dict[int, LoopTrack] = Field(default_factory=dict)
-    fisher_presence_results: (
-        tuple[
-            list[PositiveFloat],
-            list[PositiveFloat],
-            list[PositiveFloat],
-            list[PositiveFloat],
-        ]
-        | None
-    ) = None
-    gamma_persistence_results: (
-        tuple[list[PositiveFloat], list[PositiveFloat]] | None
-    ) = None
-    gamma_null_params: tuple[PositiveFloat, PositiveFloat, PositiveFloat] | None = None
+    fisher_presence_results: PresenceTestResult | None = None
+    gamma_persistence_results: PersistenceTestResult | None = None
 
     def _get_track_embedding(
         self, idx_track: Index_t, embedding_alt: np.ndarray | None = None
@@ -158,12 +147,7 @@ class BootstrapAnalysis:
 
     def fisher_test_presence(
         self, method_pval_correction: MultipleTestCorrectionMethod
-    ) -> tuple[
-        list[PositiveFloat],
-        list[PositiveFloat],
-        list[PositiveFloat],
-        list[PositiveFloat],
-    ]:
+    ) -> PresenceTestResult:
         assert self.num_bootstraps > 0
         probs_presence = []
         odds_ratio_presence = []
@@ -187,24 +171,22 @@ class BootstrapAnalysis:
             case _:
                 raise ValueError(f"{method_pval_correction} unsupported")
 
-        return (
-            probs_presence,
-            odds_ratio_presence,
-            pvalues_raw_presence,
-            pvalues_corrected_presence,
+        return PresenceTestResult(
+            probabilities=probs_presence,
+            odds_ratios=odds_ratio_presence,
+            pvalues_raw=pvalues_raw_presence,
+            pvalues_corrected=pvalues_corrected_presence,
         )
 
     def gamma_test_persistence(
         self,
         selected_loop_classes: list,
         method_pval_correction: MultipleTestCorrectionMethod,
-    ) -> tuple[
-        list[PositiveFloat],
-        list[PositiveFloat],
-        tuple[PositiveFloat, PositiveFloat, PositiveFloat] | None,
-    ]:
+    ) -> PersistenceTestResult:
         if len(self.persistence_diagrams) == 0:
-            return ([], [], None)
+            return PersistenceTestResult(
+                pvalues_raw=[], pvalues_corrected=[], gamma_null_params=None
+            )
 
         lifetimes_bootstrap = []
         for diag in self.persistence_diagrams:
@@ -215,14 +197,18 @@ class BootstrapAnalysis:
             lifetimes_bootstrap.append(deaths - births)
 
         if len(lifetimes_bootstrap) == 0:
-            return ([], [], None)
+            return PersistenceTestResult(
+                pvalues_raw=[], pvalues_corrected=[], gamma_null_params=None
+            )
 
         lifetimes_bootstrap_arr = np.concatenate(lifetimes_bootstrap)
         lifetimes_bootstrap_arr = lifetimes_bootstrap_arr[
             np.isfinite(lifetimes_bootstrap_arr) & (lifetimes_bootstrap_arr > 0)
         ]
         if lifetimes_bootstrap_arr.size == 0:
-            return ([], [], None)
+            return PersistenceTestResult(
+                pvalues_raw=[], pvalues_corrected=[], gamma_null_params=None
+            )
 
         params = gamma.fit(lifetimes_bootstrap_arr, floc=0)
 
@@ -263,14 +249,13 @@ class BootstrapAnalysis:
             pvalues_raw_persistence,
             pvalues_corrected_persistence,
         )
-        return (
-            pvalues_raw_persistence,
-            pvalues_corrected_persistence,
-            self.gamma_null_params,
+        return PersistenceTestResult(
+            pvalues_raw=pvalues_raw_persistence,
+            pvalues_corrected=pvalues_corrected_persistence,
+            gamma_null_params=self.gamma_null_params,
         )
 
 
-@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class LoopClassAnalysis(LoopClass):
     coordinates_edges: list[np.ndarray] | None = None
     edge_gradient_raw: list[np.ndarray] | None = None
@@ -301,6 +286,9 @@ class LoopClassAnalysis(LoopClass):
             (emb[0:-1, :] + emb[1:, :]) / 2 for emb in coordinates_vertices
         ]
 
+        if values_vertices.ndim == 1:
+            values_vertices = values_vertices.reshape(-1, 1)
+
         edge_gradient_raw = loops_to_coords(
             embedding=values_vertices, loops_vertices=super_obj.representatives
         )
@@ -316,8 +304,8 @@ class LoopClassAnalysis(LoopClass):
         )
 
 
-@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
-class HodgeAnalysis:
+class HodgeAnalysis(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     hodge_eigenvalues: list | None = None
     hodge_eigenvectors: list | None = None
     edges_masks_loop_classes: list[list[np.ndarray]] = Field(default_factory=list)
@@ -370,13 +358,13 @@ class HodgeAnalysis:
                 assert nn_distances.shape == nn_indices.shape
                 length_scale = np.median(nn_distances, axis=1)[:, np.newaxis] + 1e-8
                 nn_similarities = np.exp(-nn_distances / length_scale)
+                neighbor_embeddings = edge_embedding_raw_all[nn_indices]
+                weighted_embeddings = (
+                    neighbor_embeddings * nn_similarities[:, :, np.newaxis, np.newaxis]
+                )
                 loops.edge_embedding_smooth.append(
-                    np.sum(
-                        edge_embedding_raw_all[nn_indices]
-                        * nn_similarities[:, :, np.newaxis],
-                        axis=1,
-                    )
-                    / np.sum(nn_similarities, axis=1)[:, np.newaxis]
+                    np.sum(weighted_embeddings, axis=1)
+                    / np.sum(nn_similarities, axis=1)[:, np.newaxis, np.newaxis]
                 )
 
     def _trajectory_identification(self):

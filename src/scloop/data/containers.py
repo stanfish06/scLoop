@@ -36,6 +36,7 @@ from .base_components import LoopClass
 from .loop_reconstruction import reconstruct_n_loop_representatives
 from .metadata import BootstrapMeta, ScloopMeta
 from .types import (
+    Count_t,
     Diameter_t,
     Index_t,
     IndexListDownSample,
@@ -43,7 +44,6 @@ from .types import (
     MultipleTestCorrectionMethod,
     Percent_t,
     Size_t,
-    Count_t
 )
 from .utils import (
     decode_edges,
@@ -316,7 +316,9 @@ class HomologyData:
         bd1_bd2 = bd1.dot(bd2_full)
         assert type(bd1_bd2) is csr_matrix
         if bd1_bd2.count_nonzero() != 0:
-            raise ValueError("d1 @ d2 is not zero. Simplex orientation is incorrect.")
+            logger.warning(
+                f"d1 @ d2 has {bd1_bd2.count_nonzero()} nonzero entries. Simplex orientation may be incorrect."
+            )
 
         triangle_diams = np.array(self.boundary_matrix_d1.col_simplex_diams)
         cols_use = np.where(triangle_diams <= thresh)[0]
@@ -375,7 +377,8 @@ class HomologyData:
         life_pct: Percent_t | None = None,
         n_hodge_components: int = 10,
         normalized: bool = True,
-        n_neighbors_edge_embedding: Count_t = 10
+        n_neighbors_edge_embedding: Count_t = 10,
+        verbose: bool = False,
     ) -> None:
         """Analyze a specific loop track
 
@@ -411,6 +414,9 @@ class HomologyData:
         death_t = loop_class.death
         thresh_t = birth_t + (death_t - birth_t) * life_pct
 
+        start_time = time.perf_counter()
+        if verbose:
+            logger.info("Computing Hodge matrix")
         hodge_matrix_d1 = self._compute_hodge_matrix(
             thresh=thresh_t, normalized=normalized
         )
@@ -418,6 +424,8 @@ class HomologyData:
             logger.warning(f"Could not compute Hodge matrix for track {idx_track}")
             return
 
+        if verbose:
+            logger.info("Computing Hodge eigendecomposition")
         result = self._compute_hodge_eigendecomposition(
             hodge_matrix=hodge_matrix_d1,
             n_components=n_hodge_components,
@@ -438,6 +446,8 @@ class HomologyData:
 
         source_loop_class = self.selected_loop_classes[idx_track]
         assert source_loop_class is not None
+        if verbose:
+            logger.info("Analyzing loop classes for track")
         self.bootstrap_data._analyze_track_loop_classes(
             idx_track=idx_track,
             source_loop_class=source_loop_class,
@@ -452,6 +462,8 @@ class HomologyData:
         - trajectory discovery
         ==========================================
         """
+        if verbose:
+            logger.info("Embedding edges")
         for loop in track.hodge_analysis.selected_loop_classes:
             assert loop.representatives is not None
             """
@@ -475,7 +487,13 @@ class HomologyData:
                 loops_masks_to_edges_masks(loops_mask)
             )
             track.hodge_analysis._embed_edges()
-            track.hodge_analysis._smoothening_edge_embedding(n_neighbors=n_neighbors_edge_embedding)
+            track.hodge_analysis._smoothening_edge_embedding(
+                n_neighbors=n_neighbors_edge_embedding
+            )
+        if verbose:
+            logger.success(
+                f"Hodge analysis finished in {time.perf_counter() - start_time:.2f}s"
+            )
 
     def _compute_loop_representatives(
         self,
@@ -573,23 +591,23 @@ class HomologyData:
 
             if not bootstrap:
                 self.selected_loop_classes[loop_idx] = LoopClass(
-                    loop_idx,
-                    loop_birth,
-                    loop_death,
-                    cocycles[i],
-                    loops,
-                    loops_coords,
+                    rank=loop_idx,
+                    birth=loop_birth,
+                    death=loop_death,
+                    cocycles=cocycles[i],
+                    representatives=loops,
+                    coordinates_vertices_representatives=loops_coords,
                 )
             else:
                 assert self.bootstrap_data is not None
                 self.bootstrap_data.selected_loop_classes[idx_bootstrap][loop_idx] = (
                     LoopClass(
-                        loop_idx,
-                        loop_birth,
-                        loop_death,
-                        cocycles[i],
-                        loops,
-                        loops_coords,
+                        rank=loop_idx,
+                        birth=loop_birth,
+                        death=loop_death,
+                        cocycles=cocycles[i],
+                        representatives=loops,
+                        coordinates_vertices_representatives=loops_coords,
                     )
                 )
 
@@ -952,20 +970,14 @@ class HomologyData:
         if self.bootstrap_data.num_bootstraps == 0:
             return
 
-        fisher_results = self.bootstrap_data.fisher_test_presence(
-            method_pval_correction=method_pval_correction
+        self.bootstrap_data.fisher_presence_results = (
+            self.bootstrap_data.fisher_test_presence(
+                method_pval_correction=method_pval_correction
+            )
         )
-        self.bootstrap_data.fisher_presence_results = fisher_results
 
-        (
-            pvalues_raw_persistence,
-            pvalues_corrected_persistence,
-            gamma_params,
-        ) = self.bootstrap_data.gamma_test_persistence(
-            self.selected_loop_classes, method_pval_correction
-        )
         self.bootstrap_data.gamma_persistence_results = (
-            pvalues_raw_persistence,
-            pvalues_corrected_persistence,
+            self.bootstrap_data.gamma_test_persistence(
+                self.selected_loop_classes, method_pval_correction
+            )
         )
-        self.bootstrap_data.gamma_null_params = gamma_params

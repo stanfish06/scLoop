@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
+import numpy as np
 from anndata import AnnData
 from pydantic import Field
 
@@ -10,7 +11,7 @@ from ..data.containers import HomologyData
 from ..data.metadata import ScloopMeta
 from ..data.types import Index_t, Percent_t, PositiveFloat, Size_t
 
-__all__ = ["find_loops"]
+__all__ = ["find_loops", "analyze_loops"]
 
 
 def _get_scloop_meta(adata: AnnData) -> ScloopMeta:
@@ -88,16 +89,24 @@ def find_loops(
 def analyze_loops(
     adata: AnnData,
     track_ids: list[Index_t] | None = None,
+    key_values: str = "dpt_pseudotime",
     n_hodge_components: Annotated[int, Field(ge=1)] = 10,
+    n_neighbors_edge_embedding: Annotated[int, Field(ge=1)] = 10,
     normalized: bool = True,
+    verbose: bool = False,
 ) -> None:
     if "scloop" not in adata.uns:
         raise ValueError("Run find_loops() first")
 
+    if key_values not in adata.obs.columns:
+        raise ValueError(f"{key_values} not found in adata.obs")
+
+    values_vertices = np.array(adata.obs[key_values])
+
     hd: HomologyData = adata.uns["scloop"]
 
     if hd.boundary_matrix_d0 is None:
-        hd._compute_boundary_matrix_d0()
+        hd._compute_boundary_matrix_d0(verbose=verbose)
 
     assert hd.bootstrap_data is not None
     track_ids_avail = list(hd.bootstrap_data.loop_tracks.keys())
@@ -108,7 +117,10 @@ def analyze_loops(
         if track_id not in track_ids_avail:
             continue
         hd._compute_hodge_analysis_for_track(
-            track_id=track_id,
+            idx_track=track_id,
+            values_vertices=values_vertices,
             n_hodge_components=n_hodge_components,
             normalized=normalized,
+            n_neighbors_edge_embedding=n_neighbors_edge_embedding,
+            verbose=verbose,
         )
