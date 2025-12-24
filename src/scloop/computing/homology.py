@@ -130,6 +130,9 @@ def compute_boundary_matrix_data(
             vertex_indices_np = np.asarray(vertex_indices, dtype=np.int64)
         # important: must convert triangle vertex ids to global indices
         triangles = vertex_indices_np[triangles_local]
+        # CRITICAL: sort triangle vertices to ensure consistent orientation
+        # Without this, d1 @ d2 != 0 when downsampling is used
+        triangles = np.sort(triangles, axis=1)
         # NOTE: edges and triangles are encoded based on the total number of vertices, not the downsampled number
         edge_ids, trig_ids = encode_triangles_and_edges(
             triangles, meta.preprocess.num_vertices

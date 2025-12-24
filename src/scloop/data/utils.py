@@ -99,10 +99,13 @@ def loop_vertices_to_edge_ids(
     if n == 0:
         return np.empty(0, dtype=np.int64)
 
-    edge_ids = np.empty(n, dtype=np.int64)
-    for k in range(n):
+    is_closed = n > 1 and loop_vertices[0] == loop_vertices[n - 1]
+    n_edges = n - 1 if is_closed else n
+
+    edge_ids = np.empty(n_edges, dtype=np.int64)
+    for k in range(n_edges):
         i = loop_vertices[k]
-        j = loop_vertices[(k + 1) % n]  # this allows loop goes back to start
+        j = loop_vertices[(k + 1) % n]
         edge_ids[k] = edge_idx_encode(int(i), int(j), num_vertices)
     return edge_ids
 
@@ -187,8 +190,10 @@ def loops_to_coords(
     loops_coords = []
     for vertices in loops_vertices:
         coords = np.asarray(embedding[np.asarray(vertices, dtype=int)])
-        # properly form a loop if possible
+        # properly form a loop if possible - only close if not already closed
         if coords.shape[0] > 2:
-            coords = np.vstack([coords, coords[[0]]])
+            # Check if loop is already closed (first == last vertex)
+            if len(vertices) < 2 or vertices[0] != vertices[-1]:
+                coords = np.vstack([coords, coords[[0]]])
         loops_coords.append(coords.tolist())
     return loops_coords

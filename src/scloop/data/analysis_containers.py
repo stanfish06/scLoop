@@ -261,6 +261,7 @@ class LoopClassAnalysis(LoopClass):
     edge_gradient_raw: list[np.ndarray] | None = None
     edge_embedding_raw: list[np.ndarray] | None = None
     edge_embedding_smooth: list[np.ndarray] | None = None
+    valid_edge_indices_per_rep: list[list[int]] = Field(default_factory=list)
 
     @property
     def coordinates_edges_all(self):
@@ -318,14 +319,20 @@ class HodgeAnalysis(BaseModel):
         hodge_evecs = np.array(self.hodge_eigenvectors)
 
         for loop_idx, loop in enumerate(self.selected_loop_classes):
-            if loop.edge_gradient_raw is None:
+            if loop.edge_gradient_raw is None or loop.coordinates_edges is None:
                 continue
 
             edge_masks = self.edges_masks_loop_classes[loop_idx]
             loop.edge_embedding_raw = []
 
             for rep_idx, edge_mask in enumerate(edge_masks):
-                edge_gradients = loop.edge_gradient_raw[rep_idx]
+                valid_indices = loop.valid_edge_indices_per_rep[rep_idx]
+                if not valid_indices:
+                    continue
+                edge_gradients = loop.edge_gradient_raw[rep_idx][valid_indices]
+                loop.coordinates_edges[rep_idx] = loop.coordinates_edges[rep_idx][
+                    valid_indices
+                ]
                 edge_evec_values = edge_mask.astype(np.float64) @ hodge_evecs.T
                 edge_embedding = (
                     edge_gradients[:, :, None] * edge_evec_values[:, None, :]

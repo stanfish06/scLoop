@@ -141,7 +141,22 @@ class HomologyData:
     boundary_matrix_d0: BoundaryMatrixD0 | None = None
     bootstrap_data: BootstrapAnalysis | None = None
 
-    def _loops_to_edge_mask(self, loops: list[list[int]]) -> np.ndarray:
+    def _loops_to_edge_mask(
+        self, loops: list[list[int]], return_valid_indices: bool = False
+    ) -> np.ndarray | tuple[np.ndarray, list[list[int]]]:
+        """Get edge mask for a group of loops. Handle non-existing and duplicate edges.
+
+        Parameters
+        ----------
+        param_name : type
+        Description of parameter.
+
+        Returns
+        -------
+        return_type
+        Description of return value.
+        """
+
         assert self.boundary_matrix_d1 is not None
         num_vertices = self.boundary_matrix_d1.num_vertices
         n_edges = self.boundary_matrix_d1.shape[0]
@@ -152,14 +167,23 @@ class HomologyData:
         }
 
         mask = np.zeros((len(loops), n_edges), dtype=bool)
+        valid_indices_per_rep = []
         for idx, loop in enumerate(loops):
             edge_ids = loop_vertices_to_edge_ids(
                 np.asarray(loop, dtype=np.int64), num_vertices
             )
-            row_ids = [edge_lookup.get(int(eid), -1) for eid in edge_ids]
-            row_ids = [rid for rid in row_ids if rid >= 0]
-            if row_ids:
-                mask[idx, row_ids] = True
+            valid_indices = []
+            seen_row_ids = set()
+            for edge_idx, eid in enumerate(edge_ids):
+                row_id = edge_lookup.get(int(eid), -1)
+                if row_id >= 0 and row_id not in seen_row_ids:
+                    mask[idx, row_id] = True
+                    valid_indices.append(edge_idx)
+                    seen_row_ids.add(row_id)
+            valid_indices_per_rep.append(valid_indices)
+
+        if return_valid_indices:
+            return mask, valid_indices_per_rep
         return mask
 
     def _compute_homology(
@@ -316,8 +340,9 @@ class HomologyData:
         bd1_bd2 = bd1.dot(bd2_full)
         assert type(bd1_bd2) is csr_matrix
         if bd1_bd2.count_nonzero() != 0:
-            logger.warning(
-                f"d1 @ d2 has {bd1_bd2.count_nonzero()} nonzero entries. Simplex orientation may be incorrect."
+            raise ValueError(
+                f"d1 @ d2 has {bd1_bd2.count_nonzero()} nonzero entries. "
+                f"Simplex orientation is incorrect. This is a bug in boundary matrix construction."
             )
 
         triangle_diams = np.array(self.boundary_matrix_d1.col_simplex_diams)
@@ -472,7 +497,10 @@ class HomologyData:
             │ n_loops x n_edges_boundary_matrix │
             └                                   ┘
             """
-            loops_mask = self._loops_to_edge_mask(loop.representatives)
+            loops_mask, valid_edge_indices = self._loops_to_edge_mask(
+                loop.representatives, return_valid_indices=True
+            )
+            loop.valid_edge_indices_per_rep = valid_edge_indices
             """
             each row contains a single edges of the loop
             ┌                                            ┐
@@ -486,10 +514,11 @@ class HomologyData:
             track.hodge_analysis.edges_masks_loop_classes.append(
                 loops_masks_to_edges_masks(loops_mask)
             )
-            track.hodge_analysis._embed_edges()
-            track.hodge_analysis._smoothening_edge_embedding(
-                n_neighbors=n_neighbors_edge_embedding
-            )
+
+        track.hodge_analysis._embed_edges()
+        track.hodge_analysis._smoothening_edge_embedding(
+            n_neighbors=n_neighbors_edge_embedding
+        )
         if verbose:
             logger.success(
                 f"Hodge analysis finished in {time.perf_counter() - start_time:.2f}s"
