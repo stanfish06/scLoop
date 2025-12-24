@@ -49,6 +49,19 @@ def decode_triangles(simplex_ids, num_vertices):
 
 
 @jit(nopython=True)
+def signed_area_2d(coords: np.ndarray) -> float:
+    if coords.shape[0] < 3 or coords.shape[1] < 2:
+        return 0.0
+    x = coords[:, 0]
+    y = coords[:, 1]
+    area = 0.0
+    n = len(x)
+    for i in range(n - 1):
+        area += x[i] * y[i + 1] - x[i + 1] * y[i]
+    return 0.5 * area
+
+
+@jit(nopython=True)
 def encode_triangles_and_edges(triangles, num_vertices):
     trig_ids = []
     edge_ids = []
@@ -129,14 +142,25 @@ def edge_ids_to_rows(edge_ids: np.ndarray, edge_row_ids: np.ndarray) -> np.ndarr
 
 @jit(nopython=True)
 def loops_masks_to_edges_masks(loops_mask: np.ndarray) -> list[np.ndarray]:
+    """Convert loop order masks to per-edge binary masks in traversal order.
+
+    loops_mask contains traversal order (1, 2, 3, ...) with 0 for edges not in loop.
+    """
     n_loops, n_edges = loops_mask.shape
     result = []
     for i in range(n_loops):
-        edge_indices = np.where(loops_mask[i, :])[0]
+        row = loops_mask[i, :]
+        edge_indices = np.where(row > 0)[0]
         n_true_edges = len(edge_indices)
+
+        # Sort by traversal order
+        orders = row[edge_indices]
+        sort_indices = np.argsort(orders)
+        edge_indices_sorted = edge_indices[sort_indices]
+
         edge_masks = np.zeros((n_true_edges, n_edges), dtype=np.bool_)
         for j in range(n_true_edges):
-            edge_masks[j, edge_indices[j]] = True
+            edge_masks[j, edge_indices_sorted[j]] = True
         result.append(edge_masks)
     return result
 
@@ -197,3 +221,28 @@ def loops_to_coords(
                 coords = np.vstack([coords, coords[[0]]])
         loops_coords.append(coords.tolist())
     return loops_coords
+
+
+@jit(nopython=True)
+def loop_vertices_to_edge_ids_with_signs(
+    loop_vertices: np.ndarray, num_vertices: Size_t
+) -> tuple[np.ndarray, np.ndarray]:
+    n = loop_vertices.shape[0]
+    if n == 0:
+        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int8)
+
+    is_closed = n > 1 and loop_vertices[0] == loop_vertices[n - 1]
+    n_edges = n - 1 if is_closed else n
+
+    edge_ids = np.empty(n_edges, dtype=np.int64)
+    edge_signs = np.empty(n_edges, dtype=np.int8)
+    for k in range(n_edges):
+        i = int(loop_vertices[k])
+        j = int(loop_vertices[(k + 1) % n])
+        if i < j:
+            edge_ids[k] = i * num_vertices + j
+            edge_signs[k] = 1
+        else:
+            edge_ids[k] = j * num_vertices + i
+            edge_signs[k] = -1
+    return edge_ids, edge_signs

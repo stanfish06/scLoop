@@ -49,7 +49,7 @@ from .utils import (
     decode_edges,
     decode_triangles,
     extract_edges_from_coo,
-    loop_vertices_to_edge_ids,
+    loop_vertices_to_edge_ids_with_signs,
     loops_masks_to_edges_masks,
     loops_to_coords,
     nearest_neighbor_per_row,
@@ -142,21 +142,11 @@ class HomologyData:
     bootstrap_data: BootstrapAnalysis | None = None
 
     def _loops_to_edge_mask(
-        self, loops: list[list[int]], return_valid_indices: bool = False
-    ) -> np.ndarray | tuple[np.ndarray, list[list[int]]]:
-        """Get edge mask for a group of loops. Handle non-existing and duplicate edges.
-
-        Parameters
-        ----------
-        param_name : type
-        Description of parameter.
-
-        Returns
-        -------
-        return_type
-        Description of return value.
-        """
-
+        self,
+        loops: list[list[int]],
+        return_valid_indices: bool = False,
+        use_order: bool = False,
+    ) -> np.ndarray | tuple[np.ndarray, list[list[int]], list[np.ndarray]]:
         assert self.boundary_matrix_d1 is not None
         num_vertices = self.boundary_matrix_d1.num_vertices
         n_edges = self.boundary_matrix_d1.shape[0]
@@ -166,24 +156,31 @@ class HomologyData:
             for row_idx, edge_id in enumerate(self.boundary_matrix_d1.row_simplex_ids)
         }
 
-        mask = np.zeros((len(loops), n_edges), dtype=bool)
+        dtype = np.int32 if use_order else bool
+        mask = np.zeros((len(loops), n_edges), dtype=dtype)
         valid_indices_per_rep = []
+        edge_signs_per_rep = []
         for idx, loop in enumerate(loops):
-            edge_ids = loop_vertices_to_edge_ids(
+            edge_ids, edge_signs = loop_vertices_to_edge_ids_with_signs(
                 np.asarray(loop, dtype=np.int64), num_vertices
             )
             valid_indices = []
+            valid_signs = []
             seen_row_ids = set()
-            for edge_idx, eid in enumerate(edge_ids):
+            order = 1  # 1-based traversal order
+            for edge_idx, (eid, sign) in enumerate(zip(edge_ids, edge_signs)):
                 row_id = edge_lookup.get(int(eid), -1)
                 if row_id >= 0 and row_id not in seen_row_ids:
-                    mask[idx, row_id] = True
+                    mask[idx, row_id] = order if use_order else True
+                    order += 1
                     valid_indices.append(edge_idx)
+                    valid_signs.append(sign)
                     seen_row_ids.add(row_id)
             valid_indices_per_rep.append(valid_indices)
+            edge_signs_per_rep.append(np.array(valid_signs, dtype=np.int8))
 
         if return_valid_indices:
-            return mask, valid_indices_per_rep
+            return mask, valid_indices_per_rep, edge_signs_per_rep
         return mask
 
     def _compute_homology(
@@ -342,7 +339,7 @@ class HomologyData:
         if bd1_bd2.count_nonzero() != 0:
             raise ValueError(
                 f"d1 @ d2 has {bd1_bd2.count_nonzero()} nonzero entries. "
-                f"Simplex orientation is incorrect. This is a bug in boundary matrix construction."
+                f"Simplex orientation is incorrect."
             )
 
         triangle_diams = np.array(self.boundary_matrix_d1.col_simplex_diams)
@@ -491,26 +488,13 @@ class HomologyData:
             logger.info("Embedding edges")
         for loop in track.hodge_analysis.selected_loop_classes:
             assert loop.representatives is not None
-            """
-            each row contains a single loop of a loop class
-            ┌                                   ┐
-            │ n_loops x n_edges_boundary_matrix │
-            └                                   ┘
-            """
-            loops_mask, valid_edge_indices = self._loops_to_edge_mask(
-                loop.representatives, return_valid_indices=True
+            loops_mask, valid_indices_per_rep, edge_signs = self._loops_to_edge_mask(
+                loops=loop.representatives,
+                return_valid_indices=True,
+                use_order=True,
             )
-            loop.valid_edge_indices_per_rep = valid_edge_indices
-            """
-            each row contains a single edges of the loop
-            ┌                                            ┐
-            │ n_edges_per_loop x n_edges_boundary_matrix │
-            └                                            ┘
-            edge can then be embedded with element-wise gradient encode and eigenvectors
-                                             ┌                                            ┐
-            edge_gradients ⊙  each column of │ n_edges_per_loop x n_edges_boundary_matrix │
-                                             └                                            ┘
-            """
+            loop.valid_edge_indices_per_rep = valid_indices_per_rep
+            loop.edge_signs_per_rep = edge_signs
             track.hodge_analysis.edges_masks_loop_classes.append(
                 loops_masks_to_edges_masks(loops_mask)
             )

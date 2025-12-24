@@ -12,7 +12,7 @@ from scipy.stats.contingency import odds_ratio
 
 from .base_components import LoopClass, PersistenceTestResult, PresenceTestResult
 from .types import Count_t, Index_t, MultipleTestCorrectionMethod, PositiveFloat, Size_t
-from .utils import loops_to_coords
+from .utils import loops_to_coords, signed_area_2d
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
@@ -109,11 +109,16 @@ class BootstrapAnalysis:
         hodge_analysis = self.loop_tracks[idx_track].hodge_analysis
         assert hodge_analysis is not None
         assert idx_track in self.loop_tracks
+
         loop_class: LoopClassAnalysis = LoopClassAnalysis.from_super(
             super_obj=source_loop_class,
             values_vertices=values_vertices,
         )
         hodge_analysis.selected_loop_classes.append(loop_class)
+
+        ref_coords = np.array(loop_class.coordinates_vertices_representatives[0])
+        ref_area = signed_area_2d(ref_coords)
+
         for boot_id, loop_id in self.loop_tracks[idx_track].track_ipairs:
             if boot_id < len(self.selected_loop_classes) and loop_id < len(
                 self.selected_loop_classes[boot_id]
@@ -123,6 +128,7 @@ class BootstrapAnalysis:
                 loop_class: LoopClassAnalysis = LoopClassAnalysis.from_super(
                     super_obj=loop_class_base,
                     values_vertices=values_vertices,
+                    ref_area=ref_area,
                 )
                 hodge_analysis.selected_loop_classes.append(loop_class)
 
@@ -262,6 +268,7 @@ class LoopClassAnalysis(LoopClass):
     edge_embedding_raw: list[np.ndarray] | None = None
     edge_embedding_smooth: list[np.ndarray] | None = None
     valid_edge_indices_per_rep: list[list[int]] = Field(default_factory=list)
+    edge_signs_per_rep: list[np.ndarray] = Field(default_factory=list)
 
     @property
     def coordinates_edges_all(self):
@@ -274,15 +281,30 @@ class LoopClassAnalysis(LoopClass):
         return np.concatenate(self.edge_embedding_raw)
 
     @classmethod
-    def from_super(cls, super_obj: LoopClass, values_vertices: np.ndarray):
+    def from_super(
+        cls,
+        super_obj: LoopClass,
+        values_vertices: np.ndarray,
+        ref_area: float | None = None,
+    ):
         assert super_obj.representatives is not None
         assert super_obj.coordinates_vertices_representatives is not None
-        super_kwargs = super_obj.model_dump()  # type: ignore[reportAttributeAccessIssue]
 
         coordinates_vertices = [
             np.array(coords)
             for coords in super_obj.coordinates_vertices_representatives
         ]
+        representatives = [list(rep) for rep in super_obj.representatives]
+
+        if len(coordinates_vertices) > 0:
+            if ref_area is None:
+                ref_area = signed_area_2d(coordinates_vertices[0])
+            if abs(ref_area) > 1e-10:
+                for i in range(len(coordinates_vertices)):
+                    if ref_area * signed_area_2d(coordinates_vertices[i]) < 0:
+                        coordinates_vertices[i] = coordinates_vertices[i][::-1]
+                        representatives[i] = representatives[i][::-1]
+
         coordinates_edges = [
             (emb[0:-1, :] + emb[1:, :]) / 2 for emb in coordinates_vertices
         ]
@@ -291,15 +313,21 @@ class LoopClassAnalysis(LoopClass):
             values_vertices = values_vertices.reshape(-1, 1)
 
         edge_gradient_raw = loops_to_coords(
-            embedding=values_vertices, loops_vertices=super_obj.representatives
+            embedding=values_vertices, loops_vertices=representatives
         )
         edge_gradient_raw = [
-            (np.array(vals)[0:-1, :] + np.array(vals)[1:, :]) / 2
-            for vals in edge_gradient_raw
+            np.diff(np.array(vals), axis=0) for vals in edge_gradient_raw
         ]
 
         return cls(
-            **super_kwargs,
+            rank=super_obj.rank,
+            birth=super_obj.birth,
+            death=super_obj.death,
+            cocycles=super_obj.cocycles,
+            representatives=representatives,
+            coordinates_vertices_representatives=[
+                c.tolist() for c in coordinates_vertices
+            ],
             coordinates_edges=coordinates_edges,
             edge_gradient_raw=edge_gradient_raw,
         )
@@ -334,6 +362,12 @@ class HodgeAnalysis(BaseModel):
                     valid_indices
                 ]
                 edge_evec_values = edge_mask.astype(np.float64) @ hodge_evecs.T
+
+                # Apply sign correction for edge traversal direction
+                if loop.edge_signs_per_rep and rep_idx < len(loop.edge_signs_per_rep):
+                    edge_signs = loop.edge_signs_per_rep[rep_idx][:, None]
+                    edge_evec_values = edge_evec_values * edge_signs
+
                 edge_embedding = (
                     edge_gradients[:, :, None] * edge_evec_values[:, None, :]
                 )
