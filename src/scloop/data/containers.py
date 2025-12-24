@@ -43,6 +43,7 @@ from .types import (
     MultipleTestCorrectionMethod,
     Percent_t,
     Size_t,
+    Count_t
 )
 from .utils import (
     decode_edges,
@@ -370,12 +371,25 @@ class HomologyData:
     def _compute_hodge_analysis_for_track(
         self,
         idx_track: Index_t,
-        embedding: np.ndarray,
         values_vertices: np.ndarray,
         life_pct: Percent_t | None = None,
         n_hodge_components: int = 10,
         normalized: bool = True,
+        n_neighbors_edge_embedding: Count_t = 10
     ) -> None:
+        """Analyze a specific loop track
+
+        Parameters
+        ----------
+        param_name : type
+        Description of parameter.
+
+        Returns
+        -------
+        return_type
+        Description of return value.
+        """
+
         assert self.bootstrap_data is not None
         assert idx_track in self.bootstrap_data.loop_tracks
 
@@ -434,6 +448,8 @@ class HomologyData:
         ============= edge embedding =============
         - compute edge masks for loops
         - embed edges using edge masks and hodge
+        - guassian smooth edge embedding
+        - trajectory discovery
         ==========================================
         """
         for loop in track.hodge_analysis.selected_loop_classes:
@@ -458,6 +474,8 @@ class HomologyData:
             track.hodge_analysis.edges_masks_loop_classes.append(
                 loops_masks_to_edges_masks(loops_mask)
             )
+            track.hodge_analysis._embed_edges()
+            track.hodge_analysis._smoothening_edge_embedding(n_neighbors=n_neighbors_edge_embedding)
 
     def _compute_loop_representatives(
         self,
@@ -628,7 +646,6 @@ class HomologyData:
 
     def _assess_bootstrap_geometric_equivalence(
         self,
-        adata: AnnData,
         source_class_idx: int,
         target_class_idx: int,
         idx_bootstrap: int = 0,
@@ -856,7 +873,6 @@ class HomologyData:
                         for j in range(n_bootstrap_loop_classes):
                             task = executor.submit(
                                 self._assess_bootstrap_geometric_equivalence,
-                                adata,
                                 i,
                                 j,
                                 idx_bootstrap,

@@ -17,10 +17,8 @@ __all__ = [
     "hist_lifetimes",
     "bar_lifetimes",
     "persistence_diagram",
-    "presence",
     "loops",
 ]
-
 
 @validate_call(config=ConfigDict(arbitrary_types_allowed=True))
 def _create_figure_standard(
@@ -466,72 +464,5 @@ def loops(
                 color=cmap[i][j % block_size],
                 **(kwargs_scatter or {}),
             )
-
-    return ax
-
-
-@validate_call(config=ConfigDict(arbitrary_types_allowed=True))
-def presence(
-    adata: AnnData,
-    key_homology: str = "scloop",
-    ax: Axes | None = None,
-    *,
-    figsize: tuple[float, float] = (5, 5),
-    dpi: float = 300,
-    kwargs_figure: dict | None = None,
-    kwargs_axes: dict | None = None,
-    kwargs_layout: dict | None = None,
-    **kwargs,
-) -> Axes:
-    pass
-    data = _get_homology_data(adata, key_homology)
-    bootstrap_data = data.bootstrap_data
-
-    ax = (
-        _create_figure_standard(
-            figsize=figsize,
-            dpi=dpi,
-            kwargs_figure=kwargs_figure,
-            kwargs_axes=kwargs_axes,
-            kwargs_layout=kwargs_layout,
-        )
-        if ax is None
-        else ax
-    )
-
-    if bootstrap_data is None or len(bootstrap_data.loop_tracks) == 0:
-        return ax
-
-    n_bootstraps = bootstrap_data.num_bootstraps
-    if n_bootstraps == 0:
-        n_bootstraps = len(bootstrap_data.persistence_diagrams)
-
-    presence_counts = [
-        len({m.idx_bootstrap for m in track.matches})
-        for track in bootstrap_data.loop_tracks.values()
-    ]
-    presence_probs = [
-        track.presence_prob(n_bootstraps)
-        for track in bootstrap_data.loop_tracks.values()
-    ]
-
-    occurance, count = np.unique(presence_counts, return_counts=True)
-    if count.size > 0:
-        ax.bar(occurance, count / np.sum(count), **kwargs)
-    if n_bootstraps > 0 and len(presence_probs) > 0:
-        mean_presence_prob = float(np.mean(presence_probs))
-        x_vals = np.arange(n_bootstraps + 1)
-        ax.bar(
-            x_vals,
-            binom.pmf(x_vals, n_bootstraps, mean_presence_prob),
-            alpha=0.5,
-            **kwargs,
-        )
-        ax.axvline(
-            binom.ppf(0.95, n_bootstraps, mean_presence_prob),
-            0,
-            1,
-            color="red",
-        )
 
     return ax
