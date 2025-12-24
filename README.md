@@ -7,7 +7,7 @@
 
 scLoop is a library to identify statistically significant loops in single-cell RNA-seq data.
 
-![persistent homology](https://raw.githubusercontent.com/stanfish06/scloop/main/examples/loop.png)
+![persistent homology](https://raw.githubusercontent.com/stanfish06/scloop/master/examples/loop.png)
 
 ## Basic Usage
 ```python
