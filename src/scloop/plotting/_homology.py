@@ -433,6 +433,7 @@ def loops(
         loops_plot = _loops_for_selector(selector)
 
         for j, loop in enumerate(loops_plot):
+            loop = np.array(loop)
             ax.plot(
                 loop[:, components[0]],
                 loop[:, components[1]],
