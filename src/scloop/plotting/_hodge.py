@@ -107,7 +107,7 @@ def loop_edge_overlay(
     components: tuple[Index_t, Index_t] = (0, 1),
     hodge_component: Index_t = 0,
     use_smooth: bool = False,
-    color_by: Literal["hodge", "gradient", "position"] = "hodge",
+    color_by: Literal["hodge", "gradient", "position", "eigenvector"] = "hodge",
     pointsize: PositiveFloat = 10,
     figsize: tuple[PositiveFloat, PositiveFloat] = (5, 5),
     dpi: PositiveFloat = 300,

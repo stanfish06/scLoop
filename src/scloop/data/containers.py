@@ -354,17 +354,14 @@ class HomologyData:
             bd2 = bd2_full[:, cols_use]
 
         if normalized:
-            D2 = np.maximum(np.asarray(abs(bd2).sum(axis=1)), 1)
+            D2 = np.maximum(abs(bd2).sum(1), 1)
             D1 = 2 * (abs(bd1) @ D2)
-            D1[D1 == 0] = 1
             D3 = 1 / 3
-
-            term1 = (
-                bd1.transpose().tocsr().multiply(D2).multiply(1 / D1.reshape(1, -1))
-                @ bd1
-            )
-            term2 = (bd2 @ bd2.transpose()).multiply(1 / D2.reshape(1, -1)) * D3  # type: ignore[attr-defined]
-            hodge_matrix_d1: csr_matrix = csr_matrix(term1 + term2)
+            L1 = (bd1.T.multiply(D2).multiply(1 / D1.T)) @ bd1 + (
+                (bd2 * D3) @ bd2.T
+            ).multiply(1 / D2.T)
+            L1 = L1.multiply(1 / np.sqrt(D2)).multiply(np.sqrt(D2).T)
+            hodge_matrix_d1: csr_matrix = csr_matrix(L1)
         else:
             hodge_matrix_d1 = csr_matrix(bd1.transpose() @ bd1 + bd2 @ bd2.transpose())
 
@@ -385,7 +382,7 @@ class HomologyData:
             return None
 
         try:
-            eigenvalues, eigenvectors = eigsh(hodge_matrix, k=k, which="SM")
+            eigenvalues, eigenvectors = eigsh(hodge_matrix, k=k, which="SA", tol=1e-6)
             sort_idx = np.argsort(eigenvalues)
             return eigenvalues[sort_idx], eigenvectors[:, sort_idx]
         except Exception as e:
