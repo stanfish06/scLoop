@@ -1,7 +1,7 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Michigan)
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 import numpy as np
 from anndata import AnnData
@@ -94,7 +94,33 @@ def analyze_loops(
     n_neighbors_edge_embedding: Annotated[int, Field(ge=1)] = 10,
     normalized: bool = True,
     verbose: bool = False,
+    **kwargs_edge_embedding: Any,
 ) -> None:
+    """Analyze loops using Hodge decomposition and edge embedding.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Annotated data object with scloop results from find_loops().
+    track_ids : list[Index_t] | None
+        List of track IDs to analyze. If None, analyze all tracks.
+    key_values : str
+        Key in adata.obs for vertex values (e.g., pseudotime).
+    n_hodge_components : int
+        Number of Hodge eigenvector components to compute.
+    n_neighbors_edge_embedding : int
+        Number of neighbors for KNN smoothing of edge embedding.
+    normalized : bool
+        Whether to use normalized Hodge Laplacian.
+    verbose : bool
+        Whether to print progress messages.
+    **kwargs_edge_embedding
+        Additional keyword arguments for edge embedding:
+        - weight_hodge : float (default 0.5)
+            Weight for Hodge embedding vs gradient (0-1). Higher = more Hodge.
+        - half_window : int (default 2)
+            Half window size for along-loop smoothing. 0 disables smoothing.
+    """
     if "scloop" not in adata.uns:
         raise ValueError("Run find_loops() first")
 
@@ -123,4 +149,5 @@ def analyze_loops(
             normalized=normalized,
             n_neighbors_edge_embedding=n_neighbors_edge_embedding,
             verbose=verbose,
+            **kwargs_edge_embedding,
         )

@@ -10,9 +10,22 @@ from pynndescent import NNDescent
 from scipy.stats import false_discovery_control, fisher_exact, gamma
 from scipy.stats.contingency import odds_ratio
 
+from ..computing import compute_weighted_hodge_embedding
 from .base_components import LoopClass, PersistenceTestResult, PresenceTestResult
-from .types import Count_t, Index_t, MultipleTestCorrectionMethod, PositiveFloat, Size_t
-from .utils import loops_to_coords, signed_area_2d
+from .types import (
+    Count_t,
+    Index_t,
+    MultipleTestCorrectionMethod,
+    Percent_t,
+    PositiveFloat,
+    Size_t,
+)
+from .utils import (
+    loops_to_coords,
+    signed_area_2d,
+    smooth_along_loop_1d,
+    smooth_along_loop_2d,
+)
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
@@ -340,7 +353,7 @@ class HodgeAnalysis(BaseModel):
     edges_masks_loop_classes: list[list[np.ndarray]] = Field(default_factory=list)
     selected_loop_classes: list[LoopClassAnalysis] = Field(default_factory=list)
 
-    def _embed_edges(self):
+    def _embed_edges(self, weight_hodge: Percent_t, half_window: int = 2):
         if self.hodge_eigenvectors is None:
             return
 
@@ -363,14 +376,35 @@ class HodgeAnalysis(BaseModel):
                 ]
                 edge_evec_values = edge_mask.astype(np.float64) @ hodge_evecs.T
 
-                # Apply sign correction for edge traversal direction
+                # apply sign correction for edge traversal direction
                 if loop.edge_signs_per_rep and rep_idx < len(loop.edge_signs_per_rep):
                     edge_signs = loop.edge_signs_per_rep[rep_idx][:, None]
                     edge_evec_values = edge_evec_values * edge_signs
 
-                edge_embedding = (
-                    edge_gradients[:, :, None] * edge_evec_values[:, None, :]
+                # window smoothing along loop
+                if half_window > 0:
+                    edge_gradients_smooth = smooth_along_loop_1d(
+                        edge_gradients.flatten().astype(np.float64), half_window
+                    ).reshape(-1, 1)
+                    edge_evec_smooth = smooth_along_loop_2d(
+                        edge_evec_values.astype(np.float64), half_window
+                    )
+                else:
+                    edge_gradients_smooth = edge_gradients
+                    edge_evec_smooth = edge_evec_values
+
+                weighted_edge_hodge = compute_weighted_hodge_embedding(
+                    edge_evecs=edge_evec_smooth,
+                    eigenvalues=np.array(self.hodge_eigenvalues),
+                    edge_gradients=edge_gradients_smooth,
                 )
+                grad_1d = edge_gradients_smooth.flatten()
+                edge_embedding = weighted_edge_hodge * weight_hodge + grad_1d * (
+                    1 - weight_hodge
+                )
+                # edge_embedding = (
+                #     edge_gradients[:, :, None] * edge_evec_values[:, None, :]
+                # )
                 loop.edge_embedding_raw.append(edge_embedding)
 
     def _smoothening_edge_embedding(self, n_neighbors: Count_t = 10):
@@ -397,16 +431,19 @@ class HodgeAnalysis(BaseModel):
                 )
                 assert nn_indices.shape == (coords.shape[0], n_neighbors)
                 assert nn_distances.shape == nn_indices.shape
-                length_scale = np.median(nn_distances, axis=1)[:, np.newaxis] + 1e-8
+                length_scale = np.median(nn_distances, axis=1, keepdims=True) + 1e-8
                 nn_similarities = np.exp(-nn_distances / length_scale)
                 neighbor_embeddings = edge_embedding_raw_all[nn_indices]
-                weighted_embeddings = (
-                    neighbor_embeddings * nn_similarities[:, :, np.newaxis, np.newaxis]
+                nn_weights = nn_similarities / nn_similarities.sum(
+                    axis=1, keepdims=True
                 )
-                loops.edge_embedding_smooth.append(
-                    np.sum(weighted_embeddings, axis=1)
-                    / np.sum(nn_similarities, axis=1)[:, np.newaxis, np.newaxis]
-                )
+                if neighbor_embeddings.ndim == 2:
+                    smoothed = (neighbor_embeddings * nn_weights).sum(axis=1)
+                else:
+                    smoothed = (neighbor_embeddings * nn_weights[:, :, None]).sum(
+                        axis=1
+                    )
+                loops.edge_embedding_smooth.append(smoothed)
 
     def _trajectory_identification(self):
         """Identify trajectories using raw/smooth edge emebedding

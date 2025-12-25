@@ -246,3 +246,32 @@ def loop_vertices_to_edge_ids_with_signs(
             edge_ids[k] = j * num_vertices + i
             edge_signs[k] = -1
     return edge_ids, edge_signs
+
+
+@jit(nopython=True)
+def smooth_along_loop_1d(values: np.ndarray, half_window: int) -> np.ndarray:
+    n = values.shape[0]
+    smoothed = np.zeros(n, dtype=np.float64)
+    for i in range(n):
+        total = 0.0
+        count = 0
+        for offset in range(-half_window, half_window + 1):
+            idx = (i + offset) % n
+            total += values[idx]
+            count += 1
+        smoothed[i] = total / count
+    return smoothed
+
+
+@jit(nopython=True)
+def smooth_along_loop_2d(values: np.ndarray, half_window: int) -> np.ndarray:
+    n, d = values.shape
+    smoothed = np.zeros((n, d), dtype=np.float64)
+    for i in range(n):
+        for offset in range(-half_window, half_window + 1):
+            idx = (i + offset) % n
+            for j in range(d):
+                smoothed[i, j] += values[idx, j]
+        for j in range(d):
+            smoothed[i, j] /= 2 * half_window + 1
+    return smoothed

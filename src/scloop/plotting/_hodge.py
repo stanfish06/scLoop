@@ -27,7 +27,6 @@ def loop_edge_embedding(
     key_homology: str = "scloop",
     ax: Axes | None = None,
     *,
-    components: tuple[Index_t, Index_t] = (0, 1),
     use_smooth: bool = False,
     color_by: Literal["position", "gradient"] = "position",
     pointsize: PositiveFloat = 5,
@@ -37,7 +36,7 @@ def loop_edge_embedding(
     kwargs_axes: dict | None = None,
     kwargs_layout: dict | None = None,
     kwargs_scatter: dict | None = None,
-    cmap: str = "viridis",
+    cmap: str = "coolwarm",
 ) -> Axes:
     data = _get_homology_data(adata, key_homology)
 
@@ -61,6 +60,9 @@ def loop_edge_embedding(
     track = data.bootstrap_data.loop_tracks[track_id]
     hodge = track.hodge_analysis
 
+    all_embeddings = []
+    all_colors = []
+
     for loop_class in hodge.selected_loop_classes:
         edge_embeddings = (
             loop_class.edge_embedding_smooth
@@ -70,25 +72,32 @@ def loop_edge_embedding(
 
         for rep_idx, edge_emb in enumerate(edge_embeddings):
             valid_indices = loop_class.valid_edge_indices_per_rep[rep_idx]
-            edge_hodge_coords = np.sum(edge_emb, axis=1)
-
-            x_coords = edge_hodge_coords[:, components[0]]
-            y_coords = edge_hodge_coords[:, components[1]]
+            n_edges = len(edge_emb)
 
             if color_by == "position":
-                colors = np.linspace(0, 1, len(x_coords))
+                colors = np.linspace(0, 1, n_edges)
             elif color_by == "gradient":
                 gradients = loop_class.edge_gradient_raw[rep_idx][valid_indices]
-                colors = np.linalg.norm(gradients, axis=1)
+                colors = gradients.flatten()
 
-            ax.scatter(
-                x_coords,
-                y_coords,
-                c=colors,
-                s=pointsize,
-                cmap=cmap,
-                **(kwargs_scatter or {}),
-            )
+            all_embeddings.append(edge_emb)
+            all_colors.append(colors)
+
+    if all_embeddings:
+        all_emb = np.concatenate(all_embeddings)
+        all_col = np.concatenate(all_colors)
+        positions = np.arange(len(all_emb))
+
+        ax.scatter(
+            positions,
+            all_emb,
+            c=all_col,
+            s=pointsize,
+            cmap=cmap,
+            **(kwargs_scatter or {}),
+        )
+        ax.set_xlabel("Edge index")
+        ax.set_ylabel("Edge embedding")
 
     if len(ax.collections) > 0:
         plt.colorbar(ax.collections[-1], ax=ax)
@@ -105,9 +114,8 @@ def loop_edge_overlay(
     ax: Axes | None = None,
     *,
     components: tuple[Index_t, Index_t] = (0, 1),
-    hodge_component: Index_t = 0,
     use_smooth: bool = False,
-    color_by: Literal["hodge", "gradient", "position", "eigenvector"] = "hodge",
+    color_by: Literal["embedding", "gradient", "position"] = "embedding",
     pointsize: PositiveFloat = 10,
     figsize: tuple[PositiveFloat, PositiveFloat] = (5, 5),
     dpi: PositiveFloat = 300,
@@ -164,24 +172,21 @@ def loop_edge_overlay(
     all_color_values = []
 
     for loop_class in hodge.selected_loop_classes:
-        if color_by == "hodge":
-            edge_embeddings = (
-                loop_class.edge_embedding_smooth
-                if use_smooth
-                else loop_class.edge_embedding_raw
-            )
+        edge_embeddings = (
+            loop_class.edge_embedding_smooth
+            if use_smooth
+            else loop_class.edge_embedding_raw
+        )
 
         for rep_idx, edge_coords in enumerate(loop_class.coordinates_edges):
             valid_indices = loop_class.valid_edge_indices_per_rep[rep_idx]
+            edge_emb = edge_embeddings[rep_idx]
 
-            if color_by == "hodge":
-                edge_emb = edge_embeddings[rep_idx]
-                hodge_values = np.sum(edge_emb[:, :, hodge_component], axis=1)
-                colors = hodge_values
+            if color_by == "embedding":
+                colors = edge_emb
             elif color_by == "gradient":
                 gradients = loop_class.edge_gradient_raw[rep_idx][valid_indices]
-                colors = np.linalg.norm(np.abs(gradients), axis=1)
-                colors = colors * np.sign(gradients).flatten()
+                colors = gradients.flatten()
             elif color_by == "position":
                 colors = np.linspace(0, 1, len(edge_coords))
 

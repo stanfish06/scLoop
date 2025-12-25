@@ -397,19 +397,36 @@ class HomologyData:
         n_hodge_components: int = 10,
         normalized: bool = True,
         n_neighbors_edge_embedding: Count_t = 10,
+        weight_hodge: Percent_t = 0.5,
+        half_window: int = 2,
         verbose: bool = False,
     ) -> None:
         """Analyze a specific loop track
 
         Parameters
         ----------
-        param_name : type
-        Description of parameter.
+        idx_track : Index_t
+            Index of the loop track to analyze.
+        values_vertices : np.ndarray
+            Values at vertices (e.g., pseudotime) for computing gradients.
+        life_pct : Percent_t | None
+            Percentage of lifetime to use for threshold.
+        n_hodge_components : int
+            Number of Hodge eigenvector components to compute.
+        normalized : bool
+            Whether to use normalized Hodge Laplacian.
+        n_neighbors_edge_embedding : Count_t
+            Number of neighbors for KNN smoothing of edge embedding.
+        weight_hodge : Percent_t
+            Weight for Hodge embedding vs gradient (0-1). Higher = more Hodge.
+        half_window : int
+            Half window size for along-loop smoothing. 0 disables smoothing.
+        verbose : bool
+            Whether to print progress messages.
 
         Returns
         -------
-        return_type
-        Description of return value.
+        None
         """
 
         assert self.bootstrap_data is not None
@@ -496,7 +513,10 @@ class HomologyData:
                 loops_masks_to_edges_masks(loops_mask)
             )
 
-        track.hodge_analysis._embed_edges()
+        track.hodge_analysis._embed_edges(
+            weight_hodge=weight_hodge,
+            half_window=half_window,
+        )
         track.hodge_analysis._smoothening_edge_embedding(
             n_neighbors=n_neighbors_edge_embedding
         )
