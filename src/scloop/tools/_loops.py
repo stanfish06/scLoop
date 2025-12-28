@@ -7,6 +7,13 @@ import numpy as np
 from anndata import AnnData
 from pydantic import Field
 
+from ..data.constants import (
+    DEFAULT_N_HODGE_COMPONENTS,
+    DEFAULT_N_MAX_WORKERS,
+    DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
+    SCLOOP_META_UNS_KEY,
+    SCLOOP_UNS_KEY,
+)
 from ..data.containers import HomologyData
 from ..data.metadata import ScloopMeta
 from ..data.types import Index_t, Percent_t, PositiveFloat, Size_t
@@ -15,9 +22,9 @@ __all__ = ["find_loops", "analyze_loops"]
 
 
 def _get_scloop_meta(adata: AnnData) -> ScloopMeta:
-    if "scloop_meta" not in adata.uns:
+    if SCLOOP_META_UNS_KEY not in adata.uns:
         raise ValueError("scloop_meta not found in adata.uns. Run prepare_adata first.")
-    meta = adata.uns["scloop_meta"]
+    meta = adata.uns[SCLOOP_META_UNS_KEY]
     if isinstance(meta, dict):
         meta = ScloopMeta(**meta)
     return meta
@@ -31,7 +38,7 @@ def find_loops(
     n_candidates: Annotated[int, Field(ge=1)] = 1,
     n_bootstrap: Size_t = 10,
     n_check_per_candidate: Annotated[int, Field(ge=1)] = 1,
-    n_max_workers: Annotated[int, Field(ge=1)] = 8,
+    n_max_workers: Annotated[int, Field(ge=1)] = DEFAULT_N_MAX_WORKERS,
     verbose: bool = False,
 ) -> None:
     meta = _get_scloop_meta(adata)
@@ -83,15 +90,17 @@ def find_loops(
     """
     assert hd.bootstrap_data is not None
     hd._test_loops(method_pval_correction="benjamini-hochberg")
-    adata.uns["scloop"] = hd
+    adata.uns[SCLOOP_UNS_KEY] = hd
 
 
 def analyze_loops(
     adata: AnnData,
     track_ids: list[Index_t] | None = None,
     key_values: str = "dpt_pseudotime",
-    n_hodge_components: Annotated[int, Field(ge=1)] = 10,
-    n_neighbors_edge_embedding: Annotated[int, Field(ge=1)] = 10,
+    n_hodge_components: Annotated[int, Field(ge=1)] = DEFAULT_N_HODGE_COMPONENTS,
+    n_neighbors_edge_embedding: Annotated[
+        int, Field(ge=1)
+    ] = DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
     normalized: bool = True,
     verbose: bool = False,
     **kwargs_edge_embedding: Any,
@@ -121,7 +130,7 @@ def analyze_loops(
         - half_window : int (default 2)
             Half window size for along-loop smoothing. 0 disables smoothing.
     """
-    if "scloop" not in adata.uns:
+    if SCLOOP_UNS_KEY not in adata.uns:
         raise ValueError("Run find_loops() first")
 
     if key_values not in adata.obs.columns:
@@ -129,7 +138,7 @@ def analyze_loops(
 
     values_vertices = np.array(adata.obs[key_values])
 
-    hd: HomologyData = adata.uns["scloop"]
+    hd: HomologyData = adata.uns[SCLOOP_UNS_KEY]
 
     if hd.boundary_matrix_d0 is None:
         hd._compute_boundary_matrix_d0(verbose=verbose)

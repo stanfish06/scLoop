@@ -6,6 +6,7 @@ from loguru import logger
 from pydantic import validate_call
 from rich.console import Console
 
+from ..data.constants import SCLOOP_META_UNS_KEY, SCLOOP_NEIGHBORS_KEY
 from ..data.metadata import PreprocessMeta, ScloopMeta
 from ..data.types import EmbeddingMethod, EmbeddingNeighbors, FeatureSelectionMethod
 from .downsample import sample
@@ -205,13 +206,13 @@ def prepare_adata(
             adata,
             method="gauss",
             n_neighbors=n_neighbors,
-            key_added="neighbors_scloop",
+            key_added=SCLOOP_NEIGHBORS_KEY,
             use_rep=embedding_method if embedding_neighbors != "pca" else None,
         )
         if verbose:
             logger.info(f"Computing diffusion map with {n_diffusion_comps} components")
         sc.tl.diffmap(
-            adata, n_comps=n_diffusion_comps, neighbors_key="neighbors_scloop"
+            adata, n_comps=n_diffusion_comps, neighbors_key=SCLOOP_NEIGHBORS_KEY
         )
         # first component of diffusion map represent local density
         adata.obsm["X_diffmap"] = adata.obsm["X_diffmap"][:, 1:]
@@ -278,14 +279,14 @@ def prepare_adata(
         num_vertices=adata.shape[0],
     )
 
-    if "scloop_meta" not in adata.uns:
-        adata.uns["scloop_meta"] = ScloopMeta(preprocess=preprocess_meta)
+    if SCLOOP_META_UNS_KEY not in adata.uns:
+        adata.uns[SCLOOP_META_UNS_KEY] = ScloopMeta(preprocess=preprocess_meta)
     else:
-        scloop_meta = adata.uns["scloop_meta"]
+        scloop_meta = adata.uns[SCLOOP_META_UNS_KEY]
         if isinstance(scloop_meta, dict):
             scloop_meta = ScloopMeta(**scloop_meta)
         scloop_meta.preprocess = preprocess_meta
-        adata.uns["scloop_meta"] = scloop_meta
+        adata.uns[SCLOOP_META_UNS_KEY] = scloop_meta
 
     if verbose:
         logger.success("AnnData preparation complete")

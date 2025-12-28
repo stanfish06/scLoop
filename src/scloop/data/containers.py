@@ -20,20 +20,24 @@ from rich.progress import (
 )
 from scipy.sparse import csr_matrix, triu
 from scipy.sparse.linalg import eigsh
-from scipy.spatial.distance import directed_hausdorff
 
 from ..computing.homology import (
     compute_boundary_matrix_data,
+    compute_loop_geometric_distance,
     compute_loop_homological_equivalence,
     compute_persistence_diagram_and_cocycles,
 )
-from ..utils.distance_metrics.frechet_py import compute_pairwise_loop_frechet
 from .analysis_containers import (
     BootstrapAnalysis,
     LoopMatch,
     LoopTrack,
 )
 from .base_components import LoopClass
+from .constants import (
+    DEFAULT_N_HODGE_COMPONENTS,
+    DEFAULT_N_MAX_WORKERS,
+    DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
+)
 from .loop_reconstruction import reconstruct_n_loop_representatives
 from .metadata import BootstrapMeta, ScloopMeta
 from .types import (
@@ -399,9 +403,9 @@ class HomologyData:
         idx_track: Index_t,
         values_vertices: np.ndarray,
         life_pct: Percent_t | None = None,
-        n_hodge_components: int = 10,
+        n_hodge_components: int = DEFAULT_N_HODGE_COMPONENTS,
         normalized: bool = True,
-        n_neighbors_edge_embedding: Count_t = 10,
+        n_neighbors_edge_embedding: Count_t = DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
         weight_hodge: Percent_t = 0.5,
         half_window: int = 2,
         verbose: bool = False,
@@ -651,7 +655,7 @@ class HomologyData:
         selector: Index_t | tuple[Index_t, Index_t],
         embedding_alt: np.ndarray | None = None,
         include_bootstrap: bool = True,
-    ):
+    ) -> list[list[list[float]]]:
         """
         Use embedding stored in LoopClass by default
         If emebdding_alt provided, use that instead
@@ -699,8 +703,8 @@ class HomologyData:
 
     def _assess_bootstrap_geometric_equivalence(
         self,
-        source_class_idx: int,
-        target_class_idx: int,
+        source_class_idx: Index_t,
+        target_class_idx: Index_t,
         idx_bootstrap: int = 0,
         method: LoopDistMethod = "hausdorff",
     ) -> tuple[int, int, float]:
@@ -725,34 +729,11 @@ class HomologyData:
             selector=(idx_bootstrap, target_class_idx), include_bootstrap=False
         )
 
-        if len(source_coords_list) == 0 or len(target_coords_list) == 0:
-            return (source_class_idx, target_class_idx, np.nan)
-
-        if method == "frechet":
-            try:
-                distances_arr = compute_pairwise_loop_frechet(
-                    source_coords_list, target_coords_list
-                )
-                mean_distance = float(np.nanmean(distances_arr))
-            except Exception:
-                mean_distance = np.nan
-        elif method == "hausdorff":
-            distances = []
-            for source_coords in source_coords_list:
-                for target_coords in target_coords_list:
-                    try:
-                        dist = max(
-                            directed_hausdorff(source_coords, target_coords)[0],
-                            directed_hausdorff(target_coords, source_coords)[0],
-                        )
-                        distances.append(dist)
-                    except (ValueError, IndexError):
-                        distances.append(np.nan)
-            mean_distance = np.nanmean(distances) if distances else np.nan
-        else:
-            mean_distance = np.nan
-
-        return (source_class_idx, target_class_idx, float(mean_distance))
+        distances_arr = compute_loop_geometric_distance(
+            source_coords_list, target_coords_list, method
+        )
+        mean_distance = float(np.nanmean(distances_arr))
+        return (source_class_idx, target_class_idx, mean_distance)
 
     def _assess_bootstrap_homology_equivalence(
         self,
@@ -824,7 +805,7 @@ class HomologyData:
     def _bootstrap(
         self,
         adata: AnnData,
-        n_bootstrap: int,
+        n_bootstrap: Count_t,
         thresh: Diameter_t | None = None,
         top_k: int = 1,
         noise_scale: float = 1e-3,
@@ -836,7 +817,7 @@ class HomologyData:
         loop_lower_t_pct: float = 2.5,
         loop_upper_t_pct: float = 97.5,
         n_pairs_check_equivalence: int = 4,
-        n_max_workers: int = 8,
+        n_max_workers: int = DEFAULT_N_MAX_WORKERS,
         k_neighbors_check_equivalence: int = 3,
         method_geometric_equivalence: LoopDistMethod = "hausdorff",
         verbose: bool = False,
@@ -937,10 +918,10 @@ class HomologyData:
                         for j in range(n_bootstrap_loop_classes):
                             task = executor.submit(
                                 self._assess_bootstrap_geometric_equivalence,
-                                i,
-                                j,
-                                idx_bootstrap,
-                                method_geometric_equivalence,
+                                source_class_idx=i,
+                                target_class_idx=j,
+                                idx_bootstrap=idx_bootstrap,
+                                method=method_geometric_equivalence,
                             )
                             tasks[task] = (i, j)
 
@@ -969,10 +950,10 @@ class HomologyData:
                             if tj >= 0:
                                 task = executor.submit(
                                     self._assess_bootstrap_homology_equivalence,
-                                    si,
-                                    tj,
-                                    idx_bootstrap,
-                                    n_pairs_check_equivalence,
+                                    source_class_idx=si,
+                                    target_class_idx=tj,
+                                    idx_bootstrap=idx_bootstrap,
+                                    n_pairs_check=n_pairs_check_equivalence,
                                 )
                                 tasks[task] = (si, tj, neighbor_distances[si, k], k)
 

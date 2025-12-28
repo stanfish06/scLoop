@@ -2,13 +2,15 @@
 import numpy as np
 from numba import jit
 
+from ..data.constants import NUMERIC_EPSILON
+
 
 @jit(nopython=True)
 def compute_weighted_hodge_embedding(
     edge_evecs: np.ndarray,
     eigenvalues: np.ndarray,
     edge_gradients: np.ndarray,
-    epsilon: float = 1e-10,
+    epsilon: float = NUMERIC_EPSILON,
     power_evals: float = 1,
 ) -> np.ndarray:
     """Computes weighted edge embedding using hodge eigenvectors and edge gradients

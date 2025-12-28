@@ -12,6 +12,7 @@ from scipy.stats.contingency import odds_ratio
 
 from ..computing import compute_weighted_hodge_embedding
 from .base_components import LoopClass, PersistenceTestResult, PresenceTestResult
+from .constants import NUMERIC_EPSILON
 from .types import (
     Count_t,
     Index_t,
@@ -312,7 +313,7 @@ class LoopClassAnalysis(LoopClass):
         if len(coordinates_vertices) > 0:
             if ref_area is None:
                 ref_area = signed_area_2d(coordinates_vertices[0])
-            if abs(ref_area) > 1e-10:
+            if abs(ref_area) > NUMERIC_EPSILON:
                 for i in range(len(coordinates_vertices)):
                     if ref_area * signed_area_2d(coordinates_vertices[i]) < 0:
                         coordinates_vertices[i] = coordinates_vertices[i][::-1]

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from anndata import AnnData
 from scipy.sparse import csr_matrix
+from scipy.spatial.distance import directed_hausdorff
 from sklearn.neighbors import radius_neighbors_graph
 
 from ..data.metadata import ScloopMeta
@@ -13,8 +14,9 @@ from ..data.ripser_lib import (  # type: ignore[import-not-found]
     get_boundary_matrix,
     ripser,
 )
-from ..data.types import Diameter_t, IndexListDistMatrix
+from ..data.types import Diameter_t, IndexListDistMatrix, LoopDistMethod
 from ..data.utils import encode_triangles_and_edges
+from ..utils.distance_metrics.frechet_py import compute_pairwise_loop_frechet
 from ..utils.linear_algebra_gf2.m4ri_lib import (
     solve_multiple_gf2,  # type: ignore[import-not-found]
 )
@@ -231,3 +233,39 @@ def compute_loop_homological_equivalence(
     )
 
     return results, solutions
+
+
+def compute_loop_geometric_distance(
+    source_coords_list: list[list[list[float]]] | list[np.ndarray],
+    target_coords_list: list[list[list[float]]] | list[np.ndarray],
+    method: LoopDistMethod = "hausdorff",
+) -> np.ndarray:
+    if len(source_coords_list) == 0 or len(target_coords_list) == 0:
+        return np.array([np.nan])
+
+    match method:
+        case "frechet":
+            try:
+                distances_arr = compute_pairwise_loop_frechet(
+                    source_coords_list, target_coords_list
+                )
+                return distances_arr
+            except Exception:
+                return np.full(
+                    len(source_coords_list) * len(target_coords_list), np.nan
+                )
+        case "hausdorff":
+            distances = []
+            for source_coords in source_coords_list:
+                for target_coords in target_coords_list:
+                    try:
+                        dist = max(
+                            directed_hausdorff(source_coords, target_coords)[0],
+                            directed_hausdorff(target_coords, source_coords)[0],
+                        )
+                        distances.append(dist)
+                    except (ValueError, IndexError):
+                        distances.append(np.nan)
+            return np.array(distances)
+        case _:
+            return np.full(len(source_coords_list) * len(target_coords_list), np.nan)
