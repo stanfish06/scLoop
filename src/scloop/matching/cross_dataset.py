@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Annotated
+from typing import Annotated, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -33,6 +33,7 @@ from ..data.types import (
     MultipleTestCorrectionMethod,
     Percent_t,
     PositiveFloat,
+    Size_t,
 )
 from ..utils.pvalues import correct_pvalues
 from .data_modules import nnRegressorDataModule
@@ -64,9 +65,62 @@ class CrossLoopMatch:
 
 
 @dataclass
+class LoopClass:
+    rank: Size_t = 0
+
+    def __post_init__(self):
+        self.parent = self
+
+    @property
+    def is_representative(self):
+        return self.parent == self
+
+    def _get_representative(self) -> LoopClass:
+        # path compression
+        if self.parent != self:
+            self.parent = self._get_representative()
+        return self.parent  # type: ignore
+
+
+class LoopClassIdx(
+    NamedTuple
+):  # By itself, fields can be any type. Within pydantic classes, field types will be checked.
+    idx_dataset: Index_t
+    idx_loop_class: Index_t
+
+
+@dataclass
+class LoopTrack:
+    loop_classes: dict[LoopClassIdx, LoopClass] = Field(default_factory=dict)
+
+    def _union(self, idx_source: LoopClassIdx, idx_target: LoopClassIdx):
+        rep_a = self.loop_classes[idx_source]._get_representative()
+        rep_b = self.loop_classes[idx_target]._get_representative()
+        if rep_a.rank > rep_b.rank:
+            rep_b.parent = rep_a
+        elif rep_a.rank == rep_b.rank:
+            rep_b.parent = rep_a
+            rep_a.rank += 1
+        else:
+            rep_a.parent = rep_b
+
+    def _get_tracks(self) -> list[list[LoopClassIdx]]:
+        tracks = {}
+        for idx_loop_class, loop_class in self.loop_classes.items():
+            rep = loop_class._get_representative()
+            if rep not in tracks:
+                tracks[rep] = []
+            tracks[rep].append(idx_loop_class)
+        return list(tracks.values())
+
+
+@dataclass
 class CrossLoopMatchResult:
     n_permute: Count_t
-    matches: dict[frozenset[Index_t], CrossLoopMatch] = Field(default_factory=dict)
+    matches: dict[frozenset[Index_t], list[CrossLoopMatch]] = Field(
+        default_factory=dict
+    )
+    tracks: list[list[LoopClassIdx]] | None = None
 
     def _compute_tracks(self):
         """Compute track from loop matches
@@ -81,7 +135,23 @@ class CrossLoopMatchResult:
         return_type
         Description of return value.
         """
-        pass
+        tracks = LoopTrack()
+        for match_list in self.matches.values():
+            for loop_match in match_list:
+                idx_source = LoopClassIdx(
+                    idx_dataset=loop_match.source_dataset_idx,
+                    idx_loop_class=loop_match.source_class_idx,
+                )
+                idx_target = LoopClassIdx(
+                    idx_dataset=loop_match.target_dataset_idx,
+                    idx_loop_class=loop_match.target_class_idx,
+                )
+                if idx_source not in tracks.loop_classes:
+                    tracks.loop_classes[idx_source] = LoopClass()
+                if idx_target not in tracks.loop_classes:
+                    tracks.loop_classes[idx_target] = LoopClass()
+                tracks._union(idx_source=idx_source, idx_target=idx_target)
+        self.tracks = tracks._get_tracks()
 
     def _to_dataframe(self) -> pd.DataFrame:
         return pd.DataFrame()
@@ -315,7 +385,6 @@ class CrossDatasetMatcher:
                 pairwise_result_matrix[1:, ...] >= pairwise_result_matrix[0, ...],
                 axis=0,
             )
-            + 1
         ) / n_permute
 
         pairwise_result_pvalues_corrected = correct_pvalues(
@@ -372,7 +441,7 @@ class CrossDatasetMatcher:
                 ),
                 geometric_distance=float(pairwise_result_matrix[0, i, j]),
                 null_distribution_geometric_distance=null_distributions[
-                    :, i, j
+                    1:, i, j
                 ].tolist(),
                 pvalue_permutation=float(pairwise_result_pvalues[i, j]),
                 pvalue_corrected_permutation=float(
@@ -382,14 +451,15 @@ class CrossDatasetMatcher:
                 pvalue_match=float(matched_pvalues[idx]),
                 pvalue_corrected_match=float(matched_pvalues_corrected[idx]),
             )
-            self.loop_matching_result.matches[dataset_key] = loop_match
+            if dataset_key not in self.loop_matching_result.matches:
+                self.loop_matching_result.matches[dataset_key] = []
+            else:
+                self.loop_matching_result.matches[dataset_key].append(loop_match)
             if verbose:
                 logger.info(
                     f"Match found: dataset {source_dataset_idx} class {i} ↔ "
                     f"dataset {target_dataset_idx} class {j} "
-                    f"(distance={loop_match.geometric_distance:.4f}, "
-                    f"p_perm={loop_match.pvalue_corrected_permutation:.4f}, "
-                    f"p_match={loop_match.pvalue_corrected_match:.4f})"
+                    f"(distance={loop_match.geometric_distance:.4f})"
                 )
 
         if verbose:
