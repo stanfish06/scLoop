@@ -7,4 +7,11 @@
          (let ((venv "/home/stanfish/Git/scloop/.venv/bin"))
            (setenv "PATH" (concat venv ":" (getenv "PATH")))
            (setq exec-path (cons venv exec-path))
-           (setq python-shell-interpreter (concat venv "python")))))))
+           (setq python-shell-interpreter (concat venv "/python"))))))
+ (python-mode
+  .
+  ((eval .
+         (let ((venv "/home/stanfish/Git/scloop/.venv/bin"))
+           (setenv "PATH" (concat venv ":" (getenv "PATH")))
+           (setq exec-path (cons venv exec-path))
+           (setq python-shell-interpreter (concat venv "/python")))))))
