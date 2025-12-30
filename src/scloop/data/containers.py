@@ -1,4 +1,8 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Michigan)
+from __future__ import annotations
+
+import multiprocessing
+import queue
 import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,7 +23,6 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 from scipy.sparse import csr_matrix, triu
-from scipy.sparse.linalg import eigsh
 
 from ..computing.homology import (
     compute_boundary_matrix_data,
@@ -34,9 +37,11 @@ from .analysis_containers import (
 )
 from .base_components import LoopClass
 from .constants import (
+    DEFAULT_MAXITER_EIGENDECOMPOSITION,
     DEFAULT_N_HODGE_COMPONENTS,
     DEFAULT_N_MAX_WORKERS,
     DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
+    DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
 )
 from .loop_reconstruction import reconstruct_n_loop_representatives
 from .metadata import BootstrapMeta, ScloopMeta
@@ -59,6 +64,23 @@ from .utils import (
     loops_to_coords,
     nearest_neighbor_per_row,
 )
+
+
+def _run_eigsh_worker(
+    q: multiprocessing.Queue,
+    hodge_matrix: csr_matrix,
+    k: int,
+    tol: float,
+    maxiter: int | None,
+) -> None:
+    try:
+        # Re-import to ensure it works in process
+        from scipy.sparse.linalg import eigsh
+
+        vals, vecs = eigsh(hodge_matrix, k=k, which="SA", tol=tol, maxiter=maxiter)
+        q.put(("success", (vals, vecs)))
+    except Exception as e:
+        q.put(("error", e))
 
 
 class BoundaryMatrix(BaseModel, ABC):
@@ -385,7 +407,11 @@ class HomologyData:
         return hodge_matrix_d1
 
     def _compute_hodge_eigendecomposition(
-        self, hodge_matrix: csr_matrix, n_components: int = 10
+        self,
+        hodge_matrix: csr_matrix,
+        n_components: int = 10,
+        timeout: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
+        maxiter: int | None = DEFAULT_MAXITER_EIGENDECOMPOSITION,
     ) -> tuple[np.ndarray, np.ndarray] | None:
         assert type(hodge_matrix) is csr_matrix
         assert hodge_matrix.shape is not None
@@ -398,13 +424,47 @@ class HomologyData:
             logger.warning(f"Not enough dimensions for eigendecomposition (k={k}).")
             return None
 
-        try:
-            eigenvalues, eigenvectors = eigsh(hodge_matrix, k=k, which="SA", tol=1e-6)  # type: ignore[arg-type]
-            sort_idx = np.argsort(eigenvalues)
-            return eigenvalues[sort_idx], eigenvectors[:, sort_idx]
-        except Exception as e:
-            logger.error(f"Eigendecomposition failed: {e}")
-            return None
+        tolerances = [1e-6, 1e-5, 1e-4, 1e-3]
+
+        for tol in tolerances:
+            q = multiprocessing.Queue()
+            p = multiprocessing.Process(
+                target=_run_eigsh_worker,
+                args=(q, hodge_matrix, k, tol, maxiter),
+            )
+            p.start()
+
+            try:
+                status, result = q.get(timeout=timeout)
+                p.join()
+                if status == "success":
+                    eigenvalues, eigenvectors = result
+                    sort_idx = np.argsort(eigenvalues)
+                    return eigenvalues[sort_idx], eigenvectors[:, sort_idx]
+                else:
+                    logger.warning(
+                        f"Eigendecomposition failed with tol={tol}: {result}. Retrying..."
+                    )
+                    continue
+            except queue.Empty:
+                logger.warning(
+                    f"Eigendecomposition timed out ({timeout}s) with tol={tol}. "
+                    "Retrying with looser tolerance."
+                )
+                p.terminate()
+                p.join()
+                continue
+            except Exception as e:
+                logger.warning(
+                    f"Eigendecomposition failed with tol={tol}: {e}. Retrying..."
+                )
+                if p.is_alive():
+                    p.terminate()
+                    p.join()
+                continue
+
+        logger.error("Eigendecomposition failed after all retries.")
+        return None
 
     def _compute_hodge_analysis_for_track(
         self,
@@ -417,6 +477,9 @@ class HomologyData:
         weight_hodge: Percent_t = 0.5,
         half_window: int = 2,
         verbose: bool = False,
+        progress: Progress | None = None,
+        timeout_eigendecomposition: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
+        maxiter_eigendecomposition: int | None = DEFAULT_MAXITER_EIGENDECOMPOSITION,
     ) -> None:
         """Analyze a specific loop track
 
@@ -440,6 +503,8 @@ class HomologyData:
             Half window size for along-loop smoothing. 0 disables smoothing.
         verbose : bool
             Whether to print progress messages.
+        progress : Progress | None
+            Rich progress object for status updates.
 
         Returns
         -------
@@ -468,6 +533,11 @@ class HomologyData:
         thresh_t = birth_t + (death_t - birth_t) * life_pct
 
         start_time = time.perf_counter()
+
+        task_step = None
+        if progress is not None:
+            task_step = progress.add_task("Computing Hodge matrix...", total=None)
+
         if verbose:
             logger.info("Computing Hodge matrix")
         hodge_matrix_d1 = self._compute_hodge_matrix(
@@ -475,17 +545,28 @@ class HomologyData:
         )
         if hodge_matrix_d1 is None:
             logger.warning(f"Could not compute Hodge matrix for track {idx_track}")
+            if progress is not None and task_step is not None:
+                progress.remove_task(task_step)
             return
+
+        if progress is not None and task_step is not None:
+            progress.update(
+                task_step, description="Computing Hodge eigendecomposition..."
+            )
 
         if verbose:
             logger.info("Computing Hodge eigendecomposition")
         result = self._compute_hodge_eigendecomposition(
             hodge_matrix=hodge_matrix_d1,
+            timeout=timeout_eigendecomposition,
             n_components=n_hodge_components,
+            maxiter=maxiter_eigendecomposition,
         )
 
         if result is None:
             logger.warning(f"Eigendecomposition failed for track {idx_track}")
+            if progress is not None and task_step is not None:
+                progress.remove_task(task_step)
             return
 
         eigenvalues, eigenvectors = result
@@ -499,6 +580,10 @@ class HomologyData:
 
         source_loop_class = self.selected_loop_classes[idx_track]
         assert source_loop_class is not None
+
+        if progress is not None and task_step is not None:
+            progress.update(task_step, description="Analyzing loop classes...")
+
         if verbose:
             logger.info("Analyzing loop classes for track")
         self.bootstrap_data._analyze_track_loop_classes(
@@ -515,6 +600,9 @@ class HomologyData:
         - trajectory discovery
         ==========================================
         """
+        if progress is not None and task_step is not None:
+            progress.update(task_step, description="Embedding edges...")
+
         if verbose:
             logger.info("Embedding edges")
         for loop in track.hodge_analysis.selected_loop_classes:
@@ -535,11 +623,17 @@ class HomologyData:
             half_window=half_window,
         )
         try:
+            if progress is not None and task_step is not None:
+                progress.update(task_step, description="Smoothing edge embedding...")
             track.hodge_analysis._smoothening_edge_embedding(
                 n_neighbors=n_neighbors_edge_embedding
             )
         except:
             logger.warning("Edge smoothing failed")
+
+        if progress is not None and task_step is not None:
+            progress.remove_task(task_step)
+
         if verbose:
             logger.success(
                 f"Hodge analysis finished in {time.perf_counter() - start_time:.2f}s"
@@ -839,6 +933,14 @@ class HomologyData:
             return (source_class_idx, target_class_idx, False)
 
         source_loop_death = source_loop_class.death
+        target_loop_death = target_loop_class.death
+
+        source_lifetime = source_loop_class.death - source_loop_class.birth
+        target_lifetime = target_loop_class.death - target_loop_class.birth
+        max_lifetime = max(source_lifetime, target_lifetime)
+        max_column_diameter = (
+            max(source_loop_death, target_loop_death) + 0.2 * max_lifetime
+        )
 
         mask_a = self._loops_to_edge_mask(source_loops)
         mask_b = self._loops_to_edge_mask(target_loops)
@@ -853,7 +955,7 @@ class HomologyData:
             loop_mask_a=mask_a,
             loop_mask_b=mask_b,
             n_pairs_check=n_pairs_check,
-            max_column_diameter=source_loop_death,
+            max_column_diameter=max_column_diameter,
         )
         return (source_class_idx, target_class_idx, any(r == 0 for r in results))
 

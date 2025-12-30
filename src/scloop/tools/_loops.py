@@ -6,11 +6,22 @@ from typing import Annotated, Any
 import numpy as np
 from anndata import AnnData
 from pydantic import Field
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from ..data.constants import (
+    DEFAULT_MAXITER_EIGENDECOMPOSITION,
     DEFAULT_N_HODGE_COMPONENTS,
     DEFAULT_N_MAX_WORKERS,
     DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
+    DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
     SCLOOP_META_UNS_KEY,
     SCLOOP_UNS_KEY,
 )
@@ -105,6 +116,8 @@ def analyze_loops(
     ] = DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
     normalized: bool = True,
     verbose: bool = False,
+    timeout_eigendecomposition: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
+    maxiter_eigendecomposition: int | None = DEFAULT_MAXITER_EIGENDECOMPOSITION,
     **kwargs_loop_analysis: Any,
 ) -> None:
     """Analyze loops using Hodge decomposition and edge embedding.
@@ -150,15 +163,33 @@ def analyze_loops(
     if track_ids is None:
         track_ids = track_ids_avail
 
-    for track_id in track_ids:
-        if track_id not in track_ids_avail:
-            continue
-        hd._compute_hodge_analysis_for_track(
-            idx_track=track_id,
-            values_vertices=values_vertices,
-            n_hodge_components=n_hodge_components,
-            normalized=normalized,
-            n_neighbors_edge_embedding=n_neighbors_edge_embedding,
-            verbose=verbose,
-            **kwargs_loop_analysis,
-        )
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeRemainingColumn(),
+        TimeElapsedColumn(),
+    ) as progress:
+        task_main = progress.add_task("Analyzing loops...", total=len(track_ids))
+
+        for track_id in track_ids:
+            if track_id not in track_ids_avail:
+                progress.advance(task_main)
+                continue
+
+            progress.update(task_main, description=f"Analyzing track {track_id}...")
+
+            hd._compute_hodge_analysis_for_track(
+                idx_track=track_id,
+                values_vertices=values_vertices,
+                n_hodge_components=n_hodge_components,
+                normalized=normalized,
+                n_neighbors_edge_embedding=n_neighbors_edge_embedding,
+                verbose=verbose,
+                progress=progress,
+                timeout_eigendecomposition=timeout_eigendecomposition,
+                maxiter_eigendecomposition=maxiter_eigendecomposition,
+                **kwargs_loop_analysis,
+            )
+            progress.advance(task_main)
