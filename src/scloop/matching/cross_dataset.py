@@ -45,10 +45,11 @@ from .mlp import MLPregressor
 from .nf import NeuralODEregressor
 
 
-def _all_has_homology_data(adata_list: list[AnnData]):
+def _all_has_homology_data(adata_list: list[AnnData]) -> list[AnnData]:
     for i, adata in enumerate(adata_list):
         if "scloop" not in adata.uns:
             raise ValueError(f"adata {i} has no loop data")
+    return adata_list
 
 
 @dataclass
@@ -68,7 +69,7 @@ class CrossLoopMatch:
     pvalue_corrected_match: Percent_t | None = None
 
 
-@dataclass
+@dataclass(eq=False)
 class LoopClass:
     rank: Size_t = 0
 
@@ -77,12 +78,12 @@ class LoopClass:
 
     @property
     def is_representative(self):
-        return self.parent == self
+        return self.parent is self
 
     def _get_representative(self) -> LoopClass:
         # path compression
-        if self.parent != self:
-            self.parent = self._get_representative()
+        if self.parent is not self:
+            self.parent = self.parent._get_representative()
         return self.parent  # type: ignore
 
 
@@ -100,6 +101,10 @@ class LoopTrack:
     def _union(self, idx_source: LoopClassIdx, idx_target: LoopClassIdx):
         rep_a = self.loop_classes[idx_source]._get_representative()
         rep_b = self.loop_classes[idx_target]._get_representative()
+
+        if rep_a is rep_b:
+            return
+
         if rep_a.rank > rep_b.rank:
             rep_b.parent = rep_a
         elif rep_a.rank == rep_b.rank:
@@ -233,6 +238,10 @@ class CrossDatasetMatcher:
     mapping_model: MLPregressor | NeuralODEregressor | None = None
     loop_matching_result: CrossLoopMatchResult | None = None
 
+    _nf_input_dim: int | None = None
+    _nf_target_dim: int | None = None
+    _nf_max_dim: int | None = None
+
     def __post_init__(self):
         for adata in self.adata_list:
             self.homology_data_list.append(adata.uns["scloop"])
@@ -241,8 +250,24 @@ class CrossDatasetMatcher:
         ref_idx = self.meta.reference_idx
         ref_adata = self.adata_list[ref_idx]
 
-        X = np.array(ref_adata.obsm[self.meta.shared_embedding_key])
-        Y = np.array(ref_adata.obsm[self.meta.reference_embedding_keys[ref_idx]])
+        X = np.array(ref_adata.obsm[self.meta.shared_embedding_key], dtype=np.float32)
+        Y = np.array(
+            ref_adata.obsm[self.meta.reference_embedding_keys[ref_idx]],
+            dtype=np.float32,
+        )
+
+        if self.meta.model_type == "nf":
+            self._nf_input_dim = X.shape[1]
+            self._nf_target_dim = Y.shape[1]
+            self._nf_max_dim = max(self._nf_input_dim, self._nf_target_dim)
+
+            if self._nf_input_dim < self._nf_max_dim:
+                pad_width = ((0, 0), (0, self._nf_max_dim - self._nf_input_dim))
+                X = np.pad(X, pad_width, mode="constant")
+
+            if self._nf_target_dim < self._nf_max_dim:
+                pad_width = ((0, 0), (0, self._nf_max_dim - self._nf_target_dim))
+                Y = np.pad(Y, pad_width, mode="constant")
 
         data_module = nnRegressorDataModule(x=X, y=Y)
 
@@ -254,7 +279,7 @@ class CrossDatasetMatcher:
 
                 t_span = torch.linspace(0, 1, 2)
                 self.mapping_model = NeuralODEregressor(
-                    data=data_module, t_span=t_span, **model_kwargs
+                    data_module, t_span=t_span, **model_kwargs
                 )
             case _:
                 raise ValueError(f"unknown model_type: {self.meta.model_type}")
@@ -270,9 +295,26 @@ class CrossDatasetMatcher:
             if dataset_idx == ref_idx:
                 ref_emb = adata.obsm[ref_key]
             else:
-                shared_emb = np.array(adata.obsm[self.meta.shared_embedding_key])
+                shared_emb = np.array(
+                    adata.obsm[self.meta.shared_embedding_key], dtype=np.float32
+                )
                 assert self.mapping_model is not None
+
+                if self.meta.model_type == "nf":
+                    assert self._nf_max_dim is not None
+                    if shared_emb.shape[1] < self._nf_max_dim:
+                        pad_width = (
+                            (0, 0),
+                            (0, self._nf_max_dim - shared_emb.shape[1]),
+                        )
+                        shared_emb = np.pad(shared_emb, pad_width, mode="constant")
+
                 ref_emb = self.mapping_model.predict_new(shared_emb)
+
+                if self.meta.model_type == "nf":
+                    assert self._nf_target_dim is not None
+                    ref_emb = ref_emb[:, : self._nf_target_dim]
+
             adata.obsm[CROSS_MATCH_KEY] = ref_emb
 
     def _assess_permutation_geometric_equivalence(
