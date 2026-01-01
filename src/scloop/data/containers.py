@@ -4,13 +4,12 @@ from __future__ import annotations
 import multiprocessing
 import queue
 import time
-from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 from anndata import AnnData
 from loguru import logger
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import Field
 from pydantic.dataclasses import dataclass
 from rich.console import Console
 from rich.progress import (
@@ -36,6 +35,7 @@ from .analysis_containers import (
     LoopTrack,
 )
 from .base_components import LoopClass
+from .boundary import BoundaryMatrixD0, BoundaryMatrixD1
 from .constants import (
     DEFAULT_LOOP_DIST_METHOD,
     DEFAULT_MAXITER_EIGENDECOMPOSITION,
@@ -55,11 +55,8 @@ from .types import (
     MultipleTestCorrectionMethod,
     Percent_t,
     PositiveFloat,
-    Size_t,
 )
 from .utils import (
-    decode_edges,
-    decode_triangles,
     extract_edges_from_coo,
     loop_vertices_to_edge_ids_with_signs,
     loops_masks_to_edges_masks,
@@ -82,85 +79,6 @@ def _run_eigsh_worker(
         q.put(("success", (vals, vecs)))
     except Exception as e:
         q.put(("error", e))
-
-
-class BoundaryMatrix(BaseModel, ABC):
-    num_vertices: Size_t
-    data: tuple[
-        list[Index_t], list[Index_t], list[int]
-    ]  # in coo format (row indices, col indices, values)
-    shape: tuple[Size_t, Size_t]
-    row_simplex_ids: list[Index_t]
-    col_simplex_ids: list[Index_t]
-    row_simplex_diams: list[Diameter_t]
-    col_simplex_diams: list[Diameter_t]
-
-    @field_validator(
-        "row_simplex_ids",
-        "row_simplex_diams",
-        "col_simplex_ids",
-        "col_simplex_diams",
-        mode="before",
-    )
-    @classmethod
-    def validate_fields(cls, v: list[Index_t], info: ValidationInfo):
-        shape = info.data.get("shape")
-        assert shape
-        if info.field_name in ["row_simplex_ids", "row_simplex_diams"]:
-            if len(v) != shape[0]:
-                raise ValueError(
-                    f"Length of {info.field_name} does not match the number of rows of the matrix"
-                )
-        elif info.field_name in ["col_simplex_ids", "col_simplex_diams"]:
-            if len(v) != shape[1]:
-                raise ValueError(
-                    f"Length of {info.field_name} does not match the number of columns of the matrix"
-                )
-        return v
-
-    @property
-    @abstractmethod
-    def row_simplex_decode(self) -> list:
-        """
-        From simplex id (row) to vertex ids
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def col_simplex_decode(self) -> list:
-        """
-        From simplex id (column) to vertex ids
-        """
-        pass
-
-
-class BoundaryMatrixD1(BoundaryMatrix):
-    _cached_edge_set: set[tuple[Index_t, Index_t]] | None = None
-
-    @property
-    def row_simplex_decode(self) -> list[tuple[Index_t, Index_t]]:
-        return decode_edges(np.array(self.row_simplex_ids), self.num_vertices)
-
-    @property
-    def col_simplex_decode(self) -> list[tuple[Index_t, Index_t, Index_t]]:
-        return decode_triangles(np.array(self.col_simplex_ids), self.num_vertices)
-
-    @property
-    def edge_set(self) -> set[tuple[Index_t, Index_t]]:
-        if self._cached_edge_set is None:
-            self._cached_edge_set = set(self.row_simplex_decode)
-        return self._cached_edge_set
-
-
-class BoundaryMatrixD0(BoundaryMatrix):
-    @property
-    def row_simplex_decode(self) -> list[Index_t]:
-        return self.row_simplex_ids
-
-    @property
-    def col_simplex_decode(self) -> list[tuple[Index_t, Index_t]]:
-        return decode_edges(np.array(self.col_simplex_ids), self.num_vertices)
 
 
 @dataclass
@@ -629,8 +547,8 @@ class HomologyData:
             track.hodge_analysis._smoothening_edge_embedding(
                 n_neighbors=n_neighbors_edge_embedding
             )
-        except:
-            logger.warning("Edge smoothing failed")
+        except Exception as e:
+            logger.warning(f"Edge smoothing failed: {e}")
 
         if progress is not None and task_step is not None:
             progress.remove_task(task_step)
@@ -1035,6 +953,9 @@ class HomologyData:
                 level="TRACE",
                 format="<green>{time:YYYY/MM/DD HH:mm:ss}</green> | {level.icon} - <level>{message}</level>",
             )
+
+        if progress_main is None:
+            progress_main = Progress(disable=use_log_display)
 
         with progress_main:
             for idx_bootstrap in progress_main.track(range(n_bootstrap)):

@@ -29,6 +29,7 @@ class LogEntry(BaseModel):
 class LogCache(BaseModel):
     maxlen: int = Field(default=20, ge=1)
     messages: deque[LogEntry] = Field(default_factory=lambda: deque(maxlen=20))
+    total_counts: dict[str, int] = Field(default_factory=dict)
     _handler_id: int | None = None
     _update_callback: Callable[[], None] | None = None
 
@@ -36,6 +37,7 @@ class LogCache(BaseModel):
         arbitrary_types_allowed = True
 
     def model_post_init(self, __context: Any) -> None:
+        del __context
         if len(self.messages) == 0:
             self.messages = deque(maxlen=self.maxlen)
         elif self.messages.maxlen != self.maxlen:
@@ -58,14 +60,21 @@ class LogCache(BaseModel):
         )
         self.messages.append(entry)
 
+        # Track total counts
+        self.total_counts[level] = self.total_counts.get(level, 0) + 1
+
         if self._update_callback:
             self._update_callback()
 
     def get_messages(self) -> list[LogEntry]:
         return list(self.messages)
 
+    def get_total_counts(self) -> dict[str, int]:
+        return self.total_counts.copy()
+
     def clear(self) -> None:
         self.messages.clear()
+        self.total_counts.clear()
 
 
 class LogDisplay(BaseModel):
@@ -82,9 +91,10 @@ class LogDisplay(BaseModel):
         arbitrary_types_allowed = True
 
     def model_post_init(self, __context: Any) -> None:
+        del __context
         self.cache = LogCache(maxlen=self.maxlen)
 
-    def _create_table(self) -> Table:
+    def _create_table(self) -> Panel:
         table = Table(show_header=True, header_style="bold magenta", box=None)
         table.add_column("Time", style="dim", width=8)
         table.add_column("Level", width=7)
@@ -137,10 +147,12 @@ class LogDisplay(BaseModel):
         self._layout = self._create_layout()
 
         try:
-            from IPython import get_ipython
+            from IPython.core.getipython import get_ipython
 
+            ip = get_ipython()
+            config = getattr(ip, "config", None) if ip is not None else None
             in_jupyter = (
-                get_ipython() is not None and "IPKernelApp" in get_ipython().config
+                ip is not None and config is not None and "IPKernelApp" in config
             )
         except (ImportError, AttributeError):
             in_jupyter = False
@@ -163,19 +175,17 @@ class LogDisplay(BaseModel):
         if (
             hasattr(self, "_in_jupyter")
             and self._in_jupyter
-            and len(self.cache.messages) > 0
+            and len(self.cache.total_counts) > 0
         ):
             from rich.table import Table
 
             summary_table = Table(
-                show_header=True, header_style="bold magenta", title="Summary"
+                show_header=True, header_style="bold magenta", title="Log Summary"
             )
             summary_table.add_column("Level", width=7)
             summary_table.add_column("Count")
 
-            level_counts = {}
-            for entry in self.cache.messages:
-                level_counts[entry.level] = level_counts.get(entry.level, 0) + 1
+            level_counts = self.cache.get_total_counts()
 
             level_styles = {
                 "DEBUG": "dim",

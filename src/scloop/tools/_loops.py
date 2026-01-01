@@ -196,6 +196,7 @@ def analyze_loops(
     ] = DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
     normalized: bool = True,
     verbose: bool = False,
+    max_log_messages: int | None = None,
     timeout_eigendecomposition: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
     maxiter_eigendecomposition: int | None = DEFAULT_MAXITER_EIGENDECOMPOSITION,
     **kwargs_loop_analysis: Any,
@@ -218,6 +219,8 @@ def analyze_loops(
         Whether to use normalized Hodge Laplacian.
     verbose : bool
         Whether to print progress messages.
+    max_log_messages : int | None
+        If set, use live log display showing last N messages with progress bar.
     **kwargs_edge_embedding
         Additional keyword arguments for edge embedding:
         - weight_hodge : float (default 0.5)
@@ -225,51 +228,79 @@ def analyze_loops(
         - half_window : int (default 2)
             Half window size for along-loop smoothing. 0 disables smoothing.
     """
-    if SCLOOP_UNS_KEY not in adata.uns:
-        raise ValueError("Run find_loops() first")
+    use_log_display = verbose and max_log_messages is not None
+    log_display_ctx = None
+    progress = None
+    console = Console()
 
-    if key_values not in adata.obs.columns:
-        raise ValueError(f"{key_values} not found in adata.obs")
+    if use_log_display:
+        progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeRemainingColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        )
+        log_display_ctx = LogDisplay(
+            maxlen=max_log_messages, progress=progress, console=console
+        )
+        log_display_ctx.__enter__()
 
-    values_vertices = np.array(adata.obs[key_values])
+    try:
+        if SCLOOP_UNS_KEY not in adata.uns:
+            raise ValueError("Run find_loops() first")
 
-    hd: HomologyData = adata.uns[SCLOOP_UNS_KEY]
+        if key_values not in adata.obs.columns:
+            raise ValueError(f"{key_values} not found in adata.obs")
 
-    if hd.boundary_matrix_d0 is None:
-        hd._compute_boundary_matrix_d0(verbose=verbose)
+        values_vertices = np.array(adata.obs[key_values])
 
-    assert hd.bootstrap_data is not None
-    track_ids_avail = list(hd.bootstrap_data.loop_tracks.keys())
-    if track_ids is None:
-        track_ids = track_ids_avail
+        hd: HomologyData = adata.uns[SCLOOP_UNS_KEY]
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        TimeRemainingColumn(),
-        TimeElapsedColumn(),
-    ) as progress:
-        task_main = progress.add_task("Analyzing loops...", total=len(track_ids))
+        if hd.boundary_matrix_d0 is None:
+            hd._compute_boundary_matrix_d0(verbose=verbose)
 
-        for track_id in track_ids:
-            if track_id not in track_ids_avail:
-                progress.advance(task_main)
-                continue
+        assert hd.bootstrap_data is not None
+        track_ids_avail = list(hd.bootstrap_data.loop_tracks.keys())
+        if track_ids is None:
+            track_ids = track_ids_avail
 
-            progress.update(task_main, description=f"Analyzing track {track_id}...")
-
-            hd._compute_hodge_analysis_for_track(
-                idx_track=track_id,
-                values_vertices=values_vertices,
-                n_hodge_components=n_hodge_components,
-                normalized=normalized,
-                n_neighbors_edge_embedding=n_neighbors_edge_embedding,
-                verbose=verbose,
-                progress=progress,
-                timeout_eigendecomposition=timeout_eigendecomposition,
-                maxiter_eigendecomposition=maxiter_eigendecomposition,
-                **kwargs_loop_analysis,
+        if not use_log_display:
+            progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeRemainingColumn(),
+                TimeElapsedColumn(),
             )
-            progress.advance(task_main)
+
+        with progress:
+            task_main = progress.add_task("Analyzing loops...", total=len(track_ids))
+
+            for track_id in track_ids:
+                if track_id not in track_ids_avail:
+                    progress.advance(task_main)
+                    continue
+
+                progress.update(task_main, description=f"Analyzing track {track_id}...")
+
+                hd._compute_hodge_analysis_for_track(
+                    idx_track=track_id,
+                    values_vertices=values_vertices,
+                    n_hodge_components=n_hodge_components,
+                    normalized=normalized,
+                    n_neighbors_edge_embedding=n_neighbors_edge_embedding,
+                    verbose=verbose,
+                    progress=progress,
+                    timeout_eigendecomposition=timeout_eigendecomposition,
+                    maxiter_eigendecomposition=maxiter_eigendecomposition,
+                    **kwargs_loop_analysis,
+                )
+                progress.advance(task_main)
+
+    finally:
+        if use_log_display and log_display_ctx:
+            log_display_ctx.__exit__(None, None, None)
