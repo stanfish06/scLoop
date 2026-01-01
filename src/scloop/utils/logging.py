@@ -60,7 +60,6 @@ class LogCache(BaseModel):
         )
         self.messages.append(entry)
 
-        # Track total counts
         self.total_counts[level] = self.total_counts.get(level, 0) + 1
 
         if self._update_callback:
