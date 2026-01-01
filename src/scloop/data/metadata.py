@@ -26,6 +26,7 @@ class PreprocessMeta(BaseModel):
     n_diffusion_comps: int | None = None
     scvi_key: str | None = None
     indices_downsample: IndexListDownSample | None = None
+    kwargs_downsample: dict | None = None
     num_vertices: Size_t | None = None
 
 

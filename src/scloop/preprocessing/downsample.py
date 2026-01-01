@@ -74,6 +74,7 @@ def sample(
     downsample_embedding = adata.obsm[f"X_{embedding_method}"]
     assert type(downsample_embedding) is np.ndarray
 
+    # TODO: try mellon for better density estimation
     if percent_removal_density > 0:
         index = NNDescent(downsample_embedding, n_neighbors=n_neighbors_density)
         _, distances = index.query(downsample_embedding, k=n_neighbors_density)

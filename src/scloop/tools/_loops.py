@@ -5,6 +5,7 @@ from typing import Annotated, Any
 
 import numpy as np
 from anndata import AnnData
+from loguru import logger
 from pydantic import Field
 from rich.progress import (
     BarColumn,
@@ -27,7 +28,8 @@ from ..data.constants import (
 )
 from ..data.containers import HomologyData
 from ..data.metadata import ScloopMeta
-from ..data.types import Index_t, Percent_t, PositiveFloat, Size_t
+from ..data.types import Index_t, NonZeroCount_t, Percent_t, PositiveFloat, Size_t
+from ..preprocessing.downsample import sample
 
 __all__ = ["find_loops", "analyze_loops"]
 
@@ -44,15 +46,20 @@ def _get_scloop_meta(adata: AnnData) -> ScloopMeta:
 def find_loops(
     adata: AnnData,
     threshold_homology: PositiveFloat | None = None,
-    threshold_boundary: PositiveFloat | None = None,
     tightness_loops: Percent_t = 0,
-    n_candidates: Annotated[int, Field(ge=1)] = 1,
+    n_candidates: NonZeroCount_t = 1,
     n_bootstrap: Size_t = 10,
-    n_check_per_candidate: Annotated[int, Field(ge=1)] = 1,
-    n_max_workers: Annotated[int, Field(ge=1)] = DEFAULT_N_MAX_WORKERS,
+    n_check_per_candidate: NonZeroCount_t = 1,
+    n_max_workers: NonZeroCount_t = DEFAULT_N_MAX_WORKERS,
     verbose: bool = False,
     kwargs_bootstrap: dict | None = None,
     kwargs_loop_test: dict | None = None,
+    *,
+    threshold_boundary: PositiveFloat | None = None,
+    max_columns_boundary_matrix: NonZeroCount_t = 10000,
+    auto_shrink_boundary_matrix: bool = True,
+    auto_shrink_factor: Percent_t = 0.9,
+    **kwargs,
 ) -> None:
     meta = _get_scloop_meta(adata)
     if meta.bootstrap is None:
@@ -66,7 +73,48 @@ def find_loops(
     if boundary_thresh is None:
         boundary_thresh = threshold_homology
     hd._compute_boundary_matrix_d1(adata=adata, thresh=boundary_thresh, verbose=verbose)
+    logger.info(f"Boundary matrix computed with threshold {boundary_thresh}")
+    assert hd.boundary_matrix_d1 is not None
     assert meta.preprocess is not None
+    if hd.boundary_matrix_d1.shape[1] > max_columns_boundary_matrix:
+        logger.warning(
+            f"Boundary matrix has more than {max_columns_boundary_matrix} columns. Downstream computation could be slow"
+        )
+        if auto_shrink_boundary_matrix:
+            logger.info(
+                f"Autoshrink boundary matrix by re-downsample the data: dropping {(1 - auto_shrink_factor) * 100:.1f}% cells each attempt"
+            )
+            assert meta.preprocess.kwargs_downsample is not None
+            kwargs_downsample = meta.preprocess.kwargs_downsample.copy()
+            n_current = kwargs_downsample.pop("n")
+            embedding_downsample = kwargs_downsample.get("embedding_method")
+            assert n_current is not None
+            if meta.preprocess.indices_downsample is not None:
+                n_current = int(n_current * auto_shrink_factor)
+            n_downsample_final = n_current
+            while (
+                hd.boundary_matrix_d1.shape[1] > max_columns_boundary_matrix
+                and n_current > 0
+            ):
+                logger.info(
+                    f"Downsampling to {n_current} cells using {embedding_downsample} embedding"
+                )
+                indices_downsample = sample(
+                    adata=adata, n=n_current, **kwargs_downsample
+                )
+                meta.preprocess.indices_downsample = indices_downsample
+                hd._compute_boundary_matrix_d1(
+                    adata=adata, thresh=boundary_thresh, verbose=verbose
+                )
+                n_downsample_final = n_current
+                n_current = int(n_current * auto_shrink_factor)
+            kwargs_downsample["n"] = n_downsample_final
+            meta.preprocess.kwargs_downsample = kwargs_downsample
+            # re-compute homology with the new downsample indices
+            sparse_dist_mat = hd._compute_homology(
+                adata=adata, thresh=threshold_homology
+            )
+
     assert meta.preprocess.embedding_method is not None
 
     embedding = np.array(adata.obsm[f"X_{meta.preprocess.embedding_method}"])
@@ -88,7 +136,7 @@ def find_loops(
         n_bootstrap=n_bootstrap,
         thresh=threshold_homology,
         top_k=n_candidates * n_check_per_candidate,
-        k_neighbors_check_equivalence=n_check_per_candidate,
+        k_neighbors_check_equivalence=1,
         n_max_workers=n_max_workers,
         life_pct=tightness_loops,
         verbose=verbose,

@@ -129,7 +129,7 @@ def prepare_adata(
     scvi_key: str = "X_scvi",
     downsample: bool = True,
     n_downsample: int = 1000,
-    percent_removal_density: Percent_t = 0.025,
+    percent_removal_density: Percent_t = 0,
     n_neighbors_removal_density: Count_t = 50,
     embedding_downsample: EmbeddingMethod | None = None,
     groupby_downsample: str | None = None,
@@ -270,6 +270,14 @@ def prepare_adata(
         if verbose:
             logger.info("Downsampling disabled, using all cells")
         indices_downsample = None
+    kwargs_downsample = {
+        "embedding_method": embedding_downsample,
+        "groupby": groupby_downsample,
+        "n": n_downsample,
+        "random_state": random_state_downsample,
+        "percent_removal_density": percent_removal_density,
+        "n_neighbors_density": n_neighbors_removal_density,
+    }
 
     preprocess_meta = PreprocessMeta(
         library_normalized=library_normalization,
@@ -287,6 +295,7 @@ def prepare_adata(
         n_diffusion_comps=n_diffusion_comps if needs_diffmap else None,
         scvi_key=scvi_key if needs_scvi else None,
         indices_downsample=indices_downsample,
+        kwargs_downsample=kwargs_downsample,
         num_vertices=adata.shape[0],
     )
 

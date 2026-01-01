@@ -997,7 +997,7 @@ class HomologyData:
         loop_lower_t_pct: float = 2.5,
         loop_upper_t_pct: float = 97.5,
         n_pairs_check_equivalence: int = 4,
-        extra_diameter_homology_equivalence: PositiveFloat = 0.2,
+        extra_diameter_homology_equivalence: PositiveFloat = 1.0,
         filter_column_homology_equivalence: bool = True,
         n_max_workers: int = DEFAULT_N_MAX_WORKERS,
         k_neighbors_check_equivalence: int = 3,
