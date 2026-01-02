@@ -269,25 +269,55 @@ class LoopClassAnalysis(LoopClass):
     valid_edge_indices_per_rep: list[list[int]] = Field(default_factory=list)
     edge_signs_per_rep: list[np.ndarray] = Field(default_factory=list)
 
+    def _concat_property(
+        self, attr_name: str, apply_filter: bool = False
+    ) -> np.ndarray:
+        attr = getattr(self, attr_name)
+        if attr is None:
+            return np.array([])
+
+        if apply_filter and self.valid_edge_indices_per_rep:
+            filtered_parts = []
+            for part, indices in zip(attr, self.valid_edge_indices_per_rep):
+                if len(indices) > 0:
+                    filtered_parts.append(part[indices])
+            if not filtered_parts:
+                return (
+                    np.array([]).reshape(0, *attr[0].shape[1:])
+                    if attr
+                    else np.array([])
+                )
+            return np.concatenate(filtered_parts)
+
+        return np.concatenate(attr)
+
     @property
     def coordinates_edges_all(self):
-        assert self.coordinates_edges is not None
-        return np.concatenate(self.coordinates_edges)
+        return self._concat_property("coordinates_edges", apply_filter=True)
 
     @property
     def edge_values_raw_all(self):
-        assert self.edge_values_raw is not None
-        return np.concatenate(self.edge_values_raw)
+        return self._concat_property("edge_values_raw", apply_filter=True)
+
+    @property
+    def edge_gradient_raw_all(self):
+        return self._concat_property("edge_gradient_raw", apply_filter=True)
 
     @property
     def edge_embedding_raw_all(self):
-        assert self.edge_embedding_raw is not None
-        return np.concatenate(self.edge_embedding_raw)
+        return self._concat_property("edge_embedding_raw", apply_filter=False)
+
+    @property
+    def edge_embedding_smooth_all(self):
+        return self._concat_property("edge_embedding_smooth", apply_filter=False)
 
     @property
     def edge_involvement_raw_all(self):
-        assert self.edge_involvement_raw is not None
-        return np.concatenate(self.edge_involvement_raw)
+        return self._concat_property("edge_involvement_raw", apply_filter=False)
+
+    @property
+    def edge_involvement_smooth_all(self):
+        return self._concat_property("edge_involvement_smooth", apply_filter=False)
 
     @classmethod
     def from_super(
@@ -377,10 +407,8 @@ class HodgeAnalysis(BaseModel):
                 valid_indices = loop.valid_edge_indices_per_rep[rep_idx]
                 if not valid_indices:
                     continue
+
                 edge_gradients = loop.edge_gradient_raw[rep_idx][valid_indices]
-                loop.coordinates_edges[rep_idx] = loop.coordinates_edges[rep_idx][
-                    valid_indices
-                ]
                 edge_evec_values = edge_mask.astype(np.float64) @ hodge_evecs.T
 
                 if loop.edge_signs_per_rep and rep_idx < len(loop.edge_signs_per_rep):
@@ -414,14 +442,16 @@ class HodgeAnalysis(BaseModel):
 
     def _smoothening_edge_embedding(self, n_neighbors: Count_t = 10):
         coordinates_edges_all = np.concatenate(
-            [loops.coordinates_edges_all for loops in self.selected_loop_classes]
+            [loop.coordinates_edges_all for loop in self.selected_loop_classes], axis=0
         )
         edge_embedding_raw_all = np.concatenate(
-            [loops.edge_embedding_raw_all for loops in self.selected_loop_classes]
+            [loop.edge_embedding_raw_all for loop in self.selected_loop_classes], axis=0
         )
         edge_involvement_raw_all = np.concatenate(
-            [loops.edge_involvement_raw_all for loops in self.selected_loop_classes]
+            [loop.edge_involvement_raw_all for loop in self.selected_loop_classes],
+            axis=0,
         )
+
         search_index = NNDescent(coordinates_edges_all)
         for loops in self.selected_loop_classes:
             loops.edge_embedding_smooth = []
@@ -429,7 +459,13 @@ class HodgeAnalysis(BaseModel):
             assert loops.edge_embedding_raw is not None
             assert loops.edge_involvement_raw is not None
             assert loops.coordinates_edges is not None
-            for coords in loops.coordinates_edges:
+
+            for rep_idx, coords_raw in enumerate(loops.coordinates_edges):
+                valid_idx = loops.valid_edge_indices_per_rep[rep_idx]
+                if not valid_idx:
+                    continue
+
+                coords = coords_raw[valid_idx]
                 nn_indices, nn_distances = search_index.query(
                     query_data=coords, k=n_neighbors
                 )
@@ -458,7 +494,12 @@ class HodgeAnalysis(BaseModel):
                 loops.edge_involvement_smooth.append(smoothed_inv)
 
     def _trajectory_identification(
-        self, threshold_involvement: float = 0.1, n_bins: int = 15, s: float = 0.1
+        self,
+        use_smooth: bool = True,
+        percentile_threshold_involvement: Percent_t = 0,
+        n_bins: int = 20,
+        min_n_bins: int = 4,
+        s: float = 0.1,
     ):
         from scipy.interpolate import splev, splprep
 
@@ -468,24 +509,31 @@ class HodgeAnalysis(BaseModel):
         vals_all = np.concatenate(
             [lc.edge_values_raw_all for lc in self.selected_loop_classes]
         ).flatten()
+
         emb_all = np.concatenate(
             [
-                np.concatenate(lc.edge_embedding_smooth)
+                lc.edge_embedding_smooth_all
+                if use_smooth
+                else lc.edge_embedding_raw_all
                 for lc in self.selected_loop_classes
             ]
         )
         inv_all = np.concatenate(
             [
-                np.concatenate(lc.edge_involvement_smooth)
+                lc.edge_involvement_smooth_all
+                if use_smooth
+                else lc.edge_involvement_raw_all
                 for lc in self.selected_loop_classes
             ]
         )
 
-        mask_valid = inv_all > (np.max(inv_all) * threshold_involvement)
+        mask_edge_involved = inv_all > np.percentile(
+            a=inv_all, q=percentile_threshold_involvement * 100
+        )
 
         trajs = []
         for sign in [1, -1]:
-            mask_arm = mask_valid & (np.sign(emb_all) == sign)
+            mask_arm = mask_edge_involved & (np.sign(emb_all) == sign)
             if not np.any(mask_arm):
                 continue
 
@@ -499,17 +547,18 @@ class HodgeAnalysis(BaseModel):
             bin_weights = []
 
             for i in range(n_bins):
+                # ensure monotonicity of pseudotime
                 m_bin = (v_arm >= bins[i]) & (v_arm < bins[i + 1])
                 if np.any(m_bin):
                     weights_bin = w_arm[m_bin]
-                    total_weight = np.sum(weights_bin) + 1e-9
+                    total_weight = np.sum(weights_bin) + NUMERIC_EPSILON
                     center = np.average(c_arm[m_bin], axis=0, weights=weights_bin)
 
                     bin_centers.append((bins[i] + bins[i + 1]) / 2)
                     spatial_centers.append(center)
                     bin_weights.append(total_weight)
 
-            if len(spatial_centers) < 4:
+            if len(spatial_centers) < min_n_bins:
                 continue
 
             pts = np.array(spatial_centers).T

@@ -212,8 +212,12 @@ def loop_edge_overlay(
         assert edge_embeddings is not None
         assert loop_class.coordinates_edges is not None
 
-        for rep_idx, edge_coords in enumerate(loop_class.coordinates_edges):
+        for rep_idx, edge_coords_raw in enumerate(loop_class.coordinates_edges):
             valid_indices = loop_class.valid_edge_indices_per_rep[rep_idx]
+            if not valid_indices:
+                continue
+
+            edge_coords = edge_coords_raw[valid_indices]
             edge_emb = edge_embeddings[rep_idx]
 
             if color_by == "embedding":

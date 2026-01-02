@@ -28,6 +28,9 @@ class LoopClass(BaseModel):
         return self.death - self.birth
 
 
+# TODO: could consider define a class for a single loop
+
+
 @dataclass
 class PresenceTestResult:
     probabilities: list[PositiveFloat]

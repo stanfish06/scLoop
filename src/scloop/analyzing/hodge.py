@@ -163,6 +163,13 @@ def compute_hodge_analysis(
     except Exception as e:
         logger.warning(f"Edge smoothing failed: {e}")
 
+    try:
+        if progress is not None and task_step is not None:
+            progress.update(task_step, description="Identify trajectories...")
+        track.hodge_analysis._trajectory_identification()
+    except Exception as e:
+        logger.warning(f"Trajectory identification failed: {e}")
+
     if progress is not None and task_step is not None:
         progress.remove_task(task_step)
 
