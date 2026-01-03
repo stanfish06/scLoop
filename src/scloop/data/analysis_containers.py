@@ -546,18 +546,17 @@ class LoopClassAnalysis(LoopClass):
         )
 
 
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class TrajectoryAnalysis:
     trajectory_coordinates: np.ndarray
     trajectory_pseudotime_range: tuple[float, float] | None = None
     n_bins: int = 20
 
-    # query from full adata
-    cell_indices: np.ndarray | None = None
-    cell_pseudotime: np.ndarray | None = None
-    # vertical distances to trajectory (maybe consider scarches's knn method?)
-    cell_distances: np.ndarray | None = None
-    n_cells_assigned: int = 0
+    weights_vertices: np.ndarray | None = None
+    indices_vertices: np.ndarray | None = None
+    values_vertices: np.ndarray | None = None
+    bandwidth_vertices: float | None = None
+    distances_vertices: np.ndarray | None = None
 
     gene_names: list[str] | None = None
     mean_expression: np.ndarray | None = None
@@ -769,6 +768,11 @@ class HodgeAnalysis(BaseModel):
                 traj_fine = np.array(splev(u_fine, tck)).T
                 trajs.append(traj_fine)
 
+                from scipy.spatial.distance import cdist
+
+                edge_distances = cdist(c_arm, traj_fine).min(axis=1)
+                bandwidth = float(np.percentile(edge_distances, 75))
+
                 traj_analysis = TrajectoryAnalysis(
                     trajectory_coordinates=traj_fine,
                     trajectory_pseudotime_range=(
@@ -776,6 +780,7 @@ class HodgeAnalysis(BaseModel):
                         float(v_arm.max()),
                     ),
                     n_bins=n_bins,
+                    bandwidth_vertices=bandwidth,
                 )
                 traj_analyses.append(traj_analysis)
             except Exception:
@@ -783,3 +788,31 @@ class HodgeAnalysis(BaseModel):
 
         self.trajectories = trajs
         self.trajectory_analyses = traj_analyses
+
+    def _compute_gene_trends(
+        self,
+        coordinates_vertices: np.ndarray,
+        gene_expression_matrix: np.ndarray,
+        gene_names: list[str],
+        values_vertices: np.ndarray,
+        confidence_level: float = 0.95,
+        verbose: bool = False,
+    ):
+        from ..analyzing.gene_trend import compute_gene_trends_for_trajectories
+
+        if len(self.trajectory_analyses) == 0:
+            if verbose:
+                from loguru import logger
+
+                logger.warning("No trajectories available for gene trend analysis")
+            return
+
+        compute_gene_trends_for_trajectories(
+            trajectory_analyses=self.trajectory_analyses,
+            coordinates_vertices=coordinates_vertices,
+            gene_expression_matrix=gene_expression_matrix,
+            gene_names=gene_names,
+            values_vertices=values_vertices,
+            confidence_level=confidence_level,
+            verbose=verbose,
+        )

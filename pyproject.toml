@@ -41,6 +41,7 @@ dependencies = [
   "pandas",
   "pip>=25.2",
   "pydantic>=2.11.4",
+  "pygam>=0.12",
   "pynndescent>=0.5.13",
   "pytest>=8.4",
   "rich==14.2",

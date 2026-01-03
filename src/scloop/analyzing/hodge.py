@@ -31,19 +31,24 @@ from ..data.utils import loops_masks_to_edges_masks
 
 def compute_hodge_analysis(
     idx_track: Index_t,
-    track_id: Index_t,  # usually same as idx_track
+    track_id: Index_t,
     bootstrap_data: BootstrapAnalysis,
     selected_loop_classes: list[LoopClass | None],
     boundary_matrix_d0: BoundaryMatrixD0,
     boundary_matrix_d1: BoundaryMatrixD1,
     meta: ScloopMeta,
     values_vertices: np.ndarray,
+    coordinates_vertices: np.ndarray,
     life_pct: Percent_t | None = None,
     n_hodge_components: int = DEFAULT_N_HODGE_COMPONENTS,
     normalized: bool = True,
     n_neighbors_edge_embedding: Count_t = DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
     weight_hodge: Percent_t = DEFAULT_WEIGHT_HODGE,
     half_window: int = DEFAULT_HALF_WINDOW,
+    compute_gene_trends: bool = True,
+    gene_expression_matrix: np.ndarray | None = None,
+    gene_names: list[str] | None = None,
+    gene_trend_confidence_level: float = 0.95,
     verbose: bool = False,
     progress: Progress | None = None,
     timeout_eigendecomposition: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
@@ -171,6 +176,28 @@ def compute_hodge_analysis(
         track.hodge_analysis._trajectory_identification()
     except Exception as e:
         logger.warning(f"Trajectory identification failed: {e}")
+
+    if (
+        compute_gene_trends
+        and gene_expression_matrix is not None
+        and gene_names is not None
+    ):
+        try:
+            if progress is not None and task_step is not None:
+                progress.update(task_step, description="Computing gene trends...")
+            if verbose:
+                logger.info("Computing gene trends along trajectories")
+
+            track.hodge_analysis._compute_gene_trends(
+                coordinates_vertices=coordinates_vertices,
+                gene_expression_matrix=gene_expression_matrix,
+                gene_names=gene_names,
+                values_vertices=values_vertices,
+                confidence_level=gene_trend_confidence_level,
+                verbose=verbose,
+            )
+        except Exception as e:
+            logger.warning(f"Gene trend computation failed: {e}")
 
     if progress is not None and task_step is not None:
         progress.remove_task(task_step)

@@ -204,6 +204,9 @@ def analyze_loops(
     max_log_messages: int | None = None,
     timeout_eigendecomposition: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
     maxiter_eigendecomposition: int | None = DEFAULT_MAXITER_EIGENDECOMPOSITION,
+    compute_gene_trends: bool = True,
+    gene_trend_genes: list[str] | None = None,
+    gene_trend_confidence_level: float = 0.95,
     **kwargs_loop_analysis: Any,
 ) -> None:
     """Analyze loops using Hodge decomposition and edge embedding.
@@ -262,6 +265,28 @@ def analyze_loops(
 
         values_vertices = np.array(adata.obs[key_values])
 
+        coordinates_vertices = None
+        if compute_gene_trends:
+            assert adata.uns[SCLOOP_META_UNS_KEY].preprocess is not None
+            coordinates_vertices = np.array(
+                adata.obsm[
+                    f"X_{adata.uns[SCLOOP_META_UNS_KEY].preprocess.embedding_method}"
+                ]
+            )
+
+        gene_expression_matrix = None
+        gene_names = None
+        if compute_gene_trends:
+            if gene_trend_genes is not None:
+                adata_genes = adata[:, gene_trend_genes]
+                gene_names = gene_trend_genes
+            else:
+                adata_genes = adata
+                gene_names = adata.var_names.tolist()
+
+            X = adata_genes.X
+            gene_expression_matrix = X.toarray() if hasattr(X, "toarray") else X
+
         hd: HomologyData = adata.uns[SCLOOP_UNS_KEY]
 
         if hd.boundary_matrix_d0 is None:
@@ -295,6 +320,7 @@ def analyze_loops(
                 hd._compute_hodge_analysis_for_track(
                     idx_track=track_id,
                     values_vertices=values_vertices,
+                    coordinates_vertices=coordinates_vertices,
                     n_hodge_components=n_hodge_components,
                     normalized=normalized,
                     n_neighbors_edge_embedding=n_neighbors_edge_embedding,
@@ -302,6 +328,10 @@ def analyze_loops(
                     progress=progress,
                     timeout_eigendecomposition=timeout_eigendecomposition,
                     maxiter_eigendecomposition=maxiter_eigendecomposition,
+                    compute_gene_trends=compute_gene_trends,
+                    gene_expression_matrix=gene_expression_matrix,
+                    gene_names=gene_names,
+                    gene_trend_confidence_level=gene_trend_confidence_level,
                     **kwargs_loop_analysis,
                 )
                 progress.advance(task_main)
