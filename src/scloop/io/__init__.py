@@ -11,7 +11,8 @@ if TYPE_CHECKING:
 
     from ..data.containers import HomologyData
 
-SCLOOP_UNS_KEY = "scloop"
+from ..data.constants import SCLOOP_UNS_KEY
+
 SCHEMA_VERSION = "1.0.0"
 
 

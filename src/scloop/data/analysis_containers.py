@@ -13,7 +13,12 @@ from scipy.stats.contingency import odds_ratio
 from ..computing import compute_weighted_hodge_embedding
 from ..utils.pvalues import correct_pvalues
 from .base_components import LoopClass, PersistenceTestResult, PresenceTestResult
-from .constants import NUMERIC_EPSILON
+from .constants import (
+    DEFAULT_HALF_WINDOW,
+    DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
+    DEFAULT_WEIGHT_HODGE,
+    NUMERIC_EPSILON,
+)
 from .types import (
     Count_t,
     Index_t,
@@ -549,7 +554,11 @@ class HodgeAnalysis(BaseModel):
     selected_loop_classes: list[LoopClassAnalysis] = Field(default_factory=list)
     trajectories: list[np.ndarray] = Field(default_factory=list)
 
-    def _embed_edges(self, weight_hodge: Percent_t, half_window: int = 2):
+    def _embed_edges(
+        self,
+        weight_hodge: Percent_t = DEFAULT_WEIGHT_HODGE,
+        half_window: int = DEFAULT_HALF_WINDOW,
+    ):
         if self.hodge_eigenvectors is None:
             return
 
@@ -600,7 +609,9 @@ class HodgeAnalysis(BaseModel):
                 loop.edge_embedding_raw.append(edge_embedding)
                 loop.edge_involvement_raw.append(involvement_hodge)
 
-    def _smoothening_edge_embedding(self, n_neighbors: Count_t = 10):
+    def _smoothening_edge_embedding(
+        self, n_neighbors: Count_t = DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING
+    ):
         coordinates_edges_all = np.concatenate(
             [loop.coordinates_edges_all for loop in self.selected_loop_classes], axis=0
         )

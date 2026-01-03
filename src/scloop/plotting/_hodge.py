@@ -11,7 +11,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.colors import Normalize
 from pydantic import ConfigDict, validate_call
 
-from ..data.constants import DEFAULT_DPI, DEFAULT_FIGSIZE
+from ..data.constants import DEFAULT_DPI, DEFAULT_FIGSIZE, SCLOOP_UNS_KEY
 from ..data.types import Index_t, PositiveFloat
 from ._utils import _create_figure_standard, _get_homology_data
 
@@ -25,7 +25,7 @@ __all__ = [
 def loop_edge_embedding(
     adata: AnnData,
     track_id: Index_t,
-    key_homology: str = "scloop",
+    key_homology: str = SCLOOP_UNS_KEY,
     ax: Axes | None = None,
     *,
     use_smooth: bool = False,
@@ -129,7 +129,7 @@ def loop_edge_overlay(
     adata: AnnData,
     basis: str,
     track_id: Index_t,
-    key_homology: str = "scloop",
+    key_homology: str = SCLOOP_UNS_KEY,
     ax: Axes | None = None,
     *,
     components: tuple[Index_t, Index_t] | list[Index_t] = (0, 1),

@@ -8,7 +8,7 @@ from matplotlib.axes import Axes
 from pydantic import ConfigDict, validate_call
 
 from ..data.analysis_containers import BootstrapAnalysis
-from ..data.constants import DEFAULT_DPI, DEFAULT_FIGSIZE
+from ..data.constants import DEFAULT_DPI, DEFAULT_FIGSIZE, SCLOOP_UNS_KEY
 from ..data.containers import HomologyData
 from ..data.types import Index_t, PositiveFloat
 from ._utils import _create_figure_standard, _get_homology_data
@@ -60,7 +60,7 @@ def _get_track_loop(
 @validate_call(config=ConfigDict(arbitrary_types_allowed=True))
 def hist_lifetimes(
     adata: AnnData,
-    key_homology: str = "scloop",
+    key_homology: str = SCLOOP_UNS_KEY,
     ax: Axes | None = None,
     kwargs_figure: dict | None = None,
     kwargs_axes: dict | None = None,
@@ -115,7 +115,7 @@ def hist_lifetimes(
 @validate_call(config=ConfigDict(arbitrary_types_allowed=True))
 def bar_lifetimes(
     adata: AnnData,
-    key_homology: str = "scloop",
+    key_homology: str = SCLOOP_UNS_KEY,
     track_ids: list[Index_t] | None = None,
     ax: Axes | None = None,
     *,
@@ -228,7 +228,7 @@ def bar_lifetimes(
 @validate_call(config=ConfigDict(arbitrary_types_allowed=True))
 def persistence_diagram(
     adata: AnnData,
-    key_homology: str = "scloop",
+    key_homology: str = SCLOOP_UNS_KEY,
     track_ids: list[Index_t] | None = None,
     ax: Axes | None = None,
     *,
@@ -346,7 +346,7 @@ def persistence_diagram(
 def loops(
     adata: AnnData,
     basis: str,
-    key_homology: str = "scloop",
+    key_homology: str = SCLOOP_UNS_KEY,
     track_ids: list[Index_t] | None = None,
     loop_ids: list[Index_t | tuple[Index_t, Index_t]] | None = None,
     components: tuple[Index_t, Index_t] | list[Index_t] = (0, 1),

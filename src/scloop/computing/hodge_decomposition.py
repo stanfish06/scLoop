@@ -11,6 +11,7 @@ from scipy.sparse import csr_matrix
 
 from ..data.constants import (
     DEFAULT_MAXITER_EIGENDECOMPOSITION,
+    DEFAULT_N_HODGE_COMPONENTS,
     DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
     NUMERIC_EPSILON,
 )
@@ -77,7 +78,7 @@ def compute_hodge_matrix(
 
 def compute_hodge_eigendecomposition(
     hodge_matrix: csr_matrix,
-    n_components: int = 10,
+    n_components: int = DEFAULT_N_HODGE_COMPONENTS,
     timeout: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
     maxiter: int | None = DEFAULT_MAXITER_EIGENDECOMPOSITION,
 ) -> tuple[np.ndarray, np.ndarray] | None:

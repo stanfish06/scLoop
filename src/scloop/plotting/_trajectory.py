@@ -5,7 +5,7 @@ from anndata import AnnData
 from matplotlib.axes import Axes
 from pydantic import ConfigDict, validate_call
 
-from ..data.constants import DEFAULT_DPI, DEFAULT_FIGSIZE
+from ..data.constants import DEFAULT_DPI, DEFAULT_FIGSIZE, SCLOOP_UNS_KEY
 from ..data.types import Index_t, PositiveFloat
 from ._utils import _create_figure_standard, _get_homology_data
 
@@ -17,7 +17,7 @@ def plot_trajectory(
     adata: AnnData,
     track_id: Index_t,
     basis: str,
-    key_homology: str = "scloop",
+    key_homology: str = SCLOOP_UNS_KEY,
     ax: Axes | None = None,
     *,
     components: tuple[Index_t, Index_t] | list[Index_t] = (0, 1),

@@ -19,7 +19,10 @@ from rich.progress import (
 )
 
 from ..data.constants import (
+    DEFAULT_K_NEIGHBORS_CHECK_EQUIVALENCE,
+    DEFAULT_MAX_COLUMNS_BOUNDARY_MATRIX,
     DEFAULT_MAXITER_EIGENDECOMPOSITION,
+    DEFAULT_N_BOOTSTRAP,
     DEFAULT_N_HODGE_COMPONENTS,
     DEFAULT_N_MAX_WORKERS,
     DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
@@ -50,7 +53,7 @@ def find_loops(
     threshold_homology: PositiveFloat | None = None,
     tightness_loops: Percent_t = 0,
     n_candidates: NonZeroCount_t = 1,
-    n_bootstrap: Size_t = 10,
+    n_bootstrap: Size_t = DEFAULT_N_BOOTSTRAP,
     n_check_per_candidate: NonZeroCount_t = 1,
     n_max_workers: NonZeroCount_t = DEFAULT_N_MAX_WORKERS,
     verbose: bool = False,
@@ -60,7 +63,7 @@ def find_loops(
     kwargs_loop_test: dict | None = None,
     *,
     threshold_boundary: PositiveFloat | None = None,
-    max_columns_boundary_matrix: NonZeroCount_t = 10000,
+    max_columns_boundary_matrix: NonZeroCount_t = DEFAULT_MAX_COLUMNS_BOUNDARY_MATRIX,
     auto_shrink_boundary_matrix: bool = True,
     auto_shrink_factor: Percent_t = 0.9,
     **kwargs,
@@ -163,7 +166,7 @@ def find_loops(
             n_bootstrap=n_bootstrap,
             thresh=threshold_homology,
             top_k=n_candidates * n_check_per_candidate,
-            k_neighbors_check_equivalence=1,  # typically one neighbor is sufficient for checking
+            k_neighbors_check_equivalence=DEFAULT_K_NEIGHBORS_CHECK_EQUIVALENCE,
             n_max_workers=n_max_workers,
             life_pct=tightness_loops,
             verbose=verbose,

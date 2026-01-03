@@ -17,10 +17,12 @@ from ..data.analysis_containers import BootstrapAnalysis, HodgeAnalysis
 from ..data.base_components import LoopClass
 from ..data.boundary import BoundaryMatrixD0, BoundaryMatrixD1
 from ..data.constants import (
+    DEFAULT_HALF_WINDOW,
     DEFAULT_MAXITER_EIGENDECOMPOSITION,
     DEFAULT_N_HODGE_COMPONENTS,
     DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
     DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
+    DEFAULT_WEIGHT_HODGE,
 )
 from ..data.metadata import ScloopMeta
 from ..data.types import Count_t, Index_t, Percent_t
@@ -40,8 +42,8 @@ def compute_hodge_analysis(
     n_hodge_components: int = DEFAULT_N_HODGE_COMPONENTS,
     normalized: bool = True,
     n_neighbors_edge_embedding: Count_t = DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
-    weight_hodge: Percent_t = 0.5,
-    half_window: int = 2,
+    weight_hodge: Percent_t = DEFAULT_WEIGHT_HODGE,
+    half_window: int = DEFAULT_HALF_WINDOW,
     verbose: bool = False,
     progress: Progress | None = None,
     timeout_eigendecomposition: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,

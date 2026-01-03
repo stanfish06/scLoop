@@ -25,9 +25,25 @@ DEFAULT_CUTOFF_PVAL: float = 0.05
 DEFAULT_MAX_COLUMNS_BOUNDARY_MATRIX: int = 10000
 DEFAULT_N_BOOTSTRAP: int = 10
 
+DEFAULT_NOISE_SCALE: float = 1e-3
+DEFAULT_N_REPS_PER_LOOP: int = 4
+DEFAULT_N_COCYCLES_USED: int = 3
+DEFAULT_N_FORCE_DEVIATE: int = 4
+DEFAULT_K_YEN: int = 8
+DEFAULT_N_PAIRS_CHECK_EQUIVALENCE: int = 4
+# typically one neighbor is sufficient for checking
+DEFAULT_K_NEIGHBORS_CHECK_EQUIVALENCE: int = 1
+DEFAULT_EXTRA_DIAM_EQUIVALENCE: float = 1.0
+
+DEFAULT_WEIGHT_HODGE: float = 0.5
+DEFAULT_HALF_WINDOW: int = 2
+
 SCLOOP_UNS_KEY: str = "scloop"
 SCLOOP_META_UNS_KEY: str = "scloop_meta"
 SCLOOP_NEIGHBORS_KEY: str = "neighbors_scloop"
+
+DEFAULT_BATCH_KEY: str = "sample_labels"
+DEFAULT_SCVI_KEY: str = "X_scvi"
 
 # simple look-up for jupyter output width
 # set JUPYTER_COLUMNS to adjust rich console width

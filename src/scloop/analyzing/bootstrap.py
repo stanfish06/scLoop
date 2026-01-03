@@ -21,7 +21,19 @@ from ..computing.matching import (
 from ..data.analysis_containers import LoopMatch
 from ..data.base_components import LoopClass
 from ..data.boundary import BoundaryMatrixD1
-from ..data.constants import DEFAULT_LIFE_PCT, DEFAULT_N_MAX_WORKERS
+from ..data.constants import (
+    DEFAULT_EXTRA_DIAM_EQUIVALENCE,
+    DEFAULT_K_NEIGHBORS_CHECK_EQUIVALENCE,
+    DEFAULT_K_YEN,
+    DEFAULT_LIFE_PCT,
+    DEFAULT_LOOP_DIST_METHOD,
+    DEFAULT_N_COCYCLES_USED,
+    DEFAULT_N_FORCE_DEVIATE,
+    DEFAULT_N_MAX_WORKERS,
+    DEFAULT_N_PAIRS_CHECK_EQUIVALENCE,
+    DEFAULT_N_REPS_PER_LOOP,
+    DEFAULT_NOISE_SCALE,
+)
 from ..data.metadata import ScloopMeta
 from ..data.types import LoopDistMethod
 from ..data.utils import nearest_neighbor_per_row
@@ -45,19 +57,19 @@ def run_single_bootstrap(
     original_loop_classes: list[LoopClass | None],
     original_boundary_matrix_d1: BoundaryMatrixD1,
     thresh: float | None = None,
-    noise_scale: float = 1e-3,
+    noise_scale: float = DEFAULT_NOISE_SCALE,
     top_k: int = 1,
-    n_reps_per_loop: int = 4,
+    n_reps_per_loop: int = DEFAULT_N_REPS_PER_LOOP,
     life_pct: float = DEFAULT_LIFE_PCT,
-    n_cocycles_used: int = 3,
-    n_force_deviate: int = 4,
-    k_yen: int = 8,
+    n_cocycles_used: int = DEFAULT_N_COCYCLES_USED,
+    n_force_deviate: int = DEFAULT_N_FORCE_DEVIATE,
+    k_yen: int = DEFAULT_K_YEN,
     loop_lower_t_pct: float = 2.5,
     loop_upper_t_pct: float = 97.5,
-    k_neighbors_check_equivalence: int = 3,
-    method_geometric_equivalence: LoopDistMethod = "hausdorff",
-    n_pairs_check_equivalence: int = 4,
-    extra_diameter_homology_equivalence: float = 1.0,
+    k_neighbors_check_equivalence: int = DEFAULT_K_NEIGHBORS_CHECK_EQUIVALENCE,
+    method_geometric_equivalence: LoopDistMethod = DEFAULT_LOOP_DIST_METHOD,
+    n_pairs_check_equivalence: int = DEFAULT_N_PAIRS_CHECK_EQUIVALENCE,
+    extra_diameter_homology_equivalence: float = DEFAULT_EXTRA_DIAM_EQUIVALENCE,
     filter_column_homology_equivalence: bool = True,
     **kwargs,
 ) -> BootstrapResult:

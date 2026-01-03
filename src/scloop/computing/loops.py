@@ -11,7 +11,13 @@ from scipy.sparse import csr_matrix, triu
 
 from ..data.base_components import LoopClass
 from ..data.boundary import BoundaryMatrixD1
-from ..data.constants import DEFAULT_LIFE_PCT
+from ..data.constants import (
+    DEFAULT_K_YEN,
+    DEFAULT_LIFE_PCT,
+    DEFAULT_N_COCYCLES_USED,
+    DEFAULT_N_FORCE_DEVIATE,
+    DEFAULT_N_REPS_PER_LOOP,
+)
 from ..data.types import Percent_t
 from ..data.utils import extract_edges_from_coo, loops_to_coords
 
@@ -24,11 +30,11 @@ def compute_loop_representatives(
     boundary_matrix_d1: BoundaryMatrixD1,
     vertex_ids: list[int],
     top_k: int | None = None,
-    n_reps_per_loop: int = 4,
+    n_reps_per_loop: int = DEFAULT_N_REPS_PER_LOOP,
     life_pct: Percent_t = DEFAULT_LIFE_PCT,
-    n_cocycles_used: int = 3,
-    n_force_deviate: int = 4,
-    k_yen: int = 8,
+    n_cocycles_used: int = DEFAULT_N_COCYCLES_USED,
+    n_force_deviate: int = DEFAULT_N_FORCE_DEVIATE,
+    k_yen: int = DEFAULT_K_YEN,
     loop_lower_t_pct: float = 2.5,
     loop_upper_t_pct: float = 97.5,
     bootstrap: bool = False,
@@ -153,11 +159,11 @@ def reconstruct_n_loop_representatives(
     loop_death: float,
     n: int,
     life_pct: float = DEFAULT_LIFE_PCT,
-    n_force_deviate: int = 4,
-    k_yen: int = 8,
+    n_force_deviate: int = DEFAULT_N_FORCE_DEVIATE,
+    k_yen: int = DEFAULT_K_YEN,
     loop_lower_pct: float = 5,
     loop_upper_pct: float = 95,
-    n_cocycles_used: int = 10,
+    n_cocycles_used: int = DEFAULT_N_COCYCLES_USED,
 ) -> Tuple[List[List[int]], List[float]]:
     """
     Reconstruct diverse loop representatives

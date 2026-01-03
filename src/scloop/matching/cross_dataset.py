@@ -25,8 +25,11 @@ from scipy.stats import ttest_ind
 from ..computing.matching import compute_geometric_distance
 from ..data.constants import (
     CROSS_MATCH_KEY,
+    DEFAULT_CUTOFF_PVAL,
     DEFAULT_LOOP_DIST_METHOD,
     DEFAULT_N_MAX_WORKERS,
+    DEFAULT_N_PERMUTATIONS,
+    SCLOOP_UNS_KEY,
 )
 from ..data.containers import HomologyData
 from ..data.metadata import CrossDatasetMatchingMeta
@@ -47,7 +50,7 @@ from .nf import NeuralODEregressor
 
 def _all_has_homology_data(adata_list: list[AnnData]) -> list[AnnData]:
     for i, adata in enumerate(adata_list):
-        if "scloop" not in adata.uns:
+        if SCLOOP_UNS_KEY not in adata.uns:
             raise ValueError(f"adata {i} has no loop data")
     return adata_list
 
@@ -244,7 +247,7 @@ class CrossDatasetMatcher:
 
     def __post_init__(self):
         for adata in self.adata_list:
-            self.homology_data_list.append(adata.uns["scloop"])
+            self.homology_data_list.append(adata.uns[SCLOOP_UNS_KEY])
 
     def _train_reference_mapping(self, **model_kwargs):
         ref_idx = self.meta.reference_idx
@@ -342,7 +345,7 @@ class CrossDatasetMatcher:
         target_loop_classes: list[Index_t],
         include_bootstrap: bool = True,
         method: LoopDistMethod = DEFAULT_LOOP_DIST_METHOD,
-        n_max_workers: int = DEFAULT_N_MAX_WORKERS,
+        n_max_workers: Count_t = DEFAULT_N_MAX_WORKERS,
         progress: Progress | None = None,
     ):
         n_source_loop_classes = len(source_loop_classes)
@@ -427,12 +430,12 @@ class CrossDatasetMatcher:
 
     def _loops_cross_match(
         self,
-        n_permute: Count_t = 1000,
+        n_permute: Count_t = DEFAULT_N_PERMUTATIONS,
         source_dataset_idx: Index_t = 0,
         target_dataset_idx: Index_t = 1,
         method: LoopDistMethod = DEFAULT_LOOP_DIST_METHOD,
         include_bootstrap: bool = True,
-        cutoff_pval: Percent_t = 0.05,
+        cutoff_pval: Percent_t = DEFAULT_CUTOFF_PVAL,
         method_pval_correction: MultipleTestCorrectionMethod
         | None = "benjamini-hochberg",
         verbose: bool = True,

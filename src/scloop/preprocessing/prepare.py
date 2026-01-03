@@ -6,7 +6,12 @@ from loguru import logger
 from pydantic import validate_call
 from rich.console import Console
 
-from ..data.constants import SCLOOP_META_UNS_KEY, SCLOOP_NEIGHBORS_KEY
+from ..data.constants import (
+    DEFAULT_BATCH_KEY,
+    DEFAULT_SCVI_KEY,
+    SCLOOP_META_UNS_KEY,
+    SCLOOP_NEIGHBORS_KEY,
+)
 from ..data.metadata import PreprocessMeta, ScloopMeta
 from ..data.types import (
     Count_t,
@@ -31,7 +36,7 @@ def _normalize_and_select_hvg(
     compute_hvg: bool = True,
     target_sum: float = 1e4,
     n_top_genes: int = 2000,
-    batch_key: str | None = "sample_labels",
+    batch_key: str | None = DEFAULT_BATCH_KEY,
     subset: bool = True,
     verbose: bool = True,
 ):
@@ -120,7 +125,7 @@ def prepare_adata(
     library_normalization: bool = True,
     target_sum: float = 1e4,
     feature_selection_method: FeatureSelectionMethod = "hvg",
-    batch_key: str | None = "sample_labels",
+    batch_key: str | None = DEFAULT_BATCH_KEY,
     n_top_genes: int = 2000,
     embedding_method: EmbeddingMethod = "diffmap",
     embedding_neighbors: EmbeddingNeighbors = "pca",
@@ -128,7 +133,7 @@ def prepare_adata(
     n_pca_comps: int = 100,
     n_neighbors: int = 25,
     n_diffusion_comps: int = 25,
-    scvi_key: str = "X_scvi",
+    scvi_key: str = DEFAULT_SCVI_KEY,
     downsample: bool = True,
     n_downsample: int = 1000,
     percent_removal_density: Percent_t = 0,

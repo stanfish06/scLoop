@@ -5,7 +5,7 @@ import json
 import time
 from collections import deque
 from datetime import datetime
-from typing import Any, Callable, Literal
+from typing import Any, Callable
 
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -16,7 +16,7 @@ from rich.panel import Panel
 from rich.progress import Progress
 from rich.table import Table
 
-LogLevel = Literal["DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR"]
+from ..data.types import LogLevel
 
 
 class LogEntry(BaseModel):

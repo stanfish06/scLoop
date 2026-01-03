@@ -208,6 +208,7 @@ def nearest_neighbor_per_row(
 
 
 # this cannot be jitted
+# be mindful about how this interacts with valid indices
 def loops_to_coords(
     embedding: np.ndarray, loops_vertices: list[list[int]]
 ) -> list[list[list[float]]]:
