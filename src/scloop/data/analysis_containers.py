@@ -546,6 +546,28 @@ class LoopClassAnalysis(LoopClass):
         )
 
 
+@dataclass
+class TrajectoryAnalysis:
+    trajectory_coordinates: np.ndarray
+    trajectory_pseudotime_range: tuple[float, float] | None = None
+    n_bins: int = 20
+
+    # query from full adata
+    cell_indices: np.ndarray | None = None
+    cell_pseudotime: np.ndarray | None = None
+    # vertical distances to trajectory (maybe consider scarches's knn method?)
+    cell_distances: np.ndarray | None = None
+    n_cells_assigned: int = 0
+
+    gene_names: list[str] | None = None
+    mean_expression: np.ndarray | None = None
+    se_expression: np.ndarray | None = None
+    ci_lower: np.ndarray | None = None
+    ci_upper: np.ndarray | None = None
+
+    gam_n_splines: int = 10
+
+
 class HodgeAnalysis(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     hodge_eigenvalues: list | None = None
@@ -553,6 +575,7 @@ class HodgeAnalysis(BaseModel):
     edges_masks_loop_classes: list[list[np.ndarray]] = Field(default_factory=list)
     selected_loop_classes: list[LoopClassAnalysis] = Field(default_factory=list)
     trajectories: list[np.ndarray] = Field(default_factory=list)
+    trajectory_analyses: list[TrajectoryAnalysis] = Field(default_factory=list)
 
     def _embed_edges(
         self,
@@ -703,6 +726,7 @@ class HodgeAnalysis(BaseModel):
         )
 
         trajs = []
+        traj_analyses = []
         for sign in [1, -1]:
             mask_arm = mask_edge_involved & (np.sign(emb_all) == sign)
             if not np.any(mask_arm):
@@ -718,7 +742,6 @@ class HodgeAnalysis(BaseModel):
             bin_weights = []
 
             for i in range(n_bins):
-                # ensure monotonicity of pseudotime
                 m_bin = (v_arm >= bins[i]) & (v_arm < bins[i + 1])
                 if np.any(m_bin):
                     weights_bin = w_arm[m_bin]
@@ -742,10 +765,21 @@ class HodgeAnalysis(BaseModel):
 
             try:
                 tck, u = splprep(pts, w=w_pts, s=s)
-                u_fine = np.linspace(0, 1, 100)
+                u_fine = np.linspace(0, 1, n_bins * 10)
                 traj_fine = np.array(splev(u_fine, tck)).T
                 trajs.append(traj_fine)
+
+                traj_analysis = TrajectoryAnalysis(
+                    trajectory_coordinates=traj_fine,
+                    trajectory_pseudotime_range=(
+                        float(v_arm.min()),
+                        float(v_arm.max()),
+                    ),
+                    n_bins=n_bins,
+                )
+                traj_analyses.append(traj_analysis)
             except Exception:
                 continue
 
         self.trajectories = trajs
+        self.trajectory_analyses = traj_analyses
