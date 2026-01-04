@@ -248,8 +248,9 @@ def loop_edge_overlay(
             lc.set_linewidth(2)
             ax.add_collection(lc)
 
-    if show_trajectories and hasattr(hodge, "trajectories") and hodge.trajectories:
-        for traj in hodge.trajectories:
+    if show_trajectories and hodge.trajectory_analyses:
+        for traj_analysis in hodge.trajectory_analyses:
+            traj = traj_analysis.trajectory_coordinates
             ax.plot(
                 traj[:, components[0]],
                 traj[:, components[1]],

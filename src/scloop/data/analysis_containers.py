@@ -213,6 +213,7 @@ class BootstrapAnalysis:
         )
         hodge_analysis.selected_loop_classes.append(loop_class)
 
+        assert loop_class.coordinates_vertices_representatives is not None
         ref_coords = np.array(loop_class.coordinates_vertices_representatives[0])
         ref_area = signed_area_2d(ref_coords)
 
@@ -343,8 +344,6 @@ class BootstrapAnalysis:
     def to_hdf5_group(self, group: h5py.Group, compress: bool = True) -> None:
         group.attrs["_type"] = "BootstrapAnalysis"
         group.attrs["num_bootstraps"] = self.num_bootstraps
-
-        kw = {"compression": "gzip"} if compress else {}
 
         slc_grp = group.create_group("selected_loop_classes")
         slc_grp.attrs["_count"] = len(self.selected_loop_classes)
@@ -573,7 +572,6 @@ class HodgeAnalysis(BaseModel):
     hodge_eigenvectors: list | None = None
     edges_masks_loop_classes: list[list[np.ndarray]] = Field(default_factory=list)
     selected_loop_classes: list[LoopClassAnalysis] = Field(default_factory=list)
-    trajectories: list[np.ndarray] = Field(default_factory=list)
     trajectory_analyses: list[TrajectoryAnalysis] = Field(default_factory=list)
 
     def _embed_edges(
@@ -786,7 +784,6 @@ class HodgeAnalysis(BaseModel):
             except Exception:
                 continue
 
-        self.trajectories = trajs
         self.trajectory_analyses = traj_analyses
 
     def _compute_gene_trends(

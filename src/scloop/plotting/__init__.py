@@ -7,14 +7,16 @@ from ._homology import (
     loops,
     persistence_diagram,
 )
-from ._trajectory import plot_trajectory
+from ._trajectory import plot_gene_trends, plot_trajectory
 
 __all__ = [
-    "hist_lifetimes",
     "bar_lifetimes",
-    "persistence_diagram",
+    "hist_lifetimes",
     "loops",
     "loop_edge_embedding",
     "loop_edge_overlay",
+    "match_loops_overlay",
+    "persistence_diagram",
+    "plot_gene_trends",
     "plot_trajectory",
 ]

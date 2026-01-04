@@ -84,10 +84,13 @@ def compute_vertices_weights_for_trajectory(
     trajectory_coords: np.ndarray,
     coordinates_vertices: np.ndarray,
     values_vertices: np.ndarray,
-    bandwidth: float,
+    bandwidth: float | None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     distances = cdist(coordinates_vertices, trajectory_coords)
     min_distances = distances.min(axis=1)
+
+    if bandwidth is None:
+        bandwidth = min_distances.std()
 
     weights = compute_gaussian_weights(min_distances, bandwidth)
 
@@ -102,7 +105,7 @@ def fit_single_gene_gam(
     n_splines: int = 10,
     confidence_level: float = 0.95,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    gam = LinearGAM(s(0, n_splines=n_splines, lam=0.6))
+    gam = LinearGAM(s(0, n_splines=n_splines, lam=0.6))  # type: ignore[arg-type]
     gam.fit(pseudotime.reshape(-1, 1), expression, weights=weights)
 
     eval_points = np.linspace(pseudotime.min(), pseudotime.max(), n_eval_points)

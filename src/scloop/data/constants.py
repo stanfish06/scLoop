@@ -1,6 +1,10 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Michigan)
 from __future__ import annotations
 
+import os
+
+from IPython.display import Javascript
+
 from .types import LoopDistMethod, PositiveFloat
 
 CROSS_MATCH_KEY = "X_scloop_alilgned"
@@ -47,8 +51,6 @@ DEFAULT_SCVI_KEY: str = "X_scvi"
 
 # simple look-up for jupyter output width
 # set JUPYTER_COLUMNS to adjust rich console width
-from IPython.display import Javascript
-
 js_code = """
 const outputJL = document.querySelector(".jp-OutputArea");
 const outputJN = document.querySelector(".output_area");
@@ -61,8 +63,6 @@ const outputColumns = output.offsetWidth / pixelWidthPerChar;
 element.append(outputColumns)
 """
 CURRENT_JUPYTER_OUTPUT_WIDTH = Javascript(js_code)
-
-import os
 
 DEFAULT_RICH_CONSOLE_WIDTH: str = "100"
 DEFAULT_RICH_CONSOLE_HEIGHT: str = "27"

@@ -1,6 +1,8 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Michigan)
 from __future__ import annotations
 
+import matplotlib.pyplot as plt
+import numpy as np
 from anndata import AnnData
 from matplotlib.axes import Axes
 from pydantic import ConfigDict, validate_call
@@ -9,7 +11,7 @@ from ..data.constants import DEFAULT_DPI, DEFAULT_FIGSIZE, SCLOOP_UNS_KEY
 from ..data.types import Index_t, PositiveFloat
 from ._utils import _create_figure_standard, _get_homology_data
 
-__all__ = ["plot_trajectory"]
+__all__ = ["plot_trajectory", "plot_gene_trends"]
 
 
 @validate_call(config=ConfigDict(arbitrary_types_allowed=True))
@@ -75,10 +77,11 @@ def plot_trajectory(
     assert track.hodge_analysis is not None
     hodge = track.hodge_analysis
 
-    if hasattr(hodge, "trajectories") and hodge.trajectories:
+    if hodge.trajectory_analyses:
         colors = ["tab:red", "tab:blue"]
-        for i, traj_raw in enumerate(hodge.trajectories):
+        for i, traj_analysis in enumerate(hodge.trajectory_analyses):
             color = colors[i % len(colors)]
+            traj_raw = traj_analysis.trajectory_coordinates
 
             start_idx = int(clip_range[0] * len(traj_raw) / 100)
             end_idx = int(clip_range[1] * len(traj_raw) / 100)
@@ -100,8 +103,8 @@ def plot_trajectory(
 
             ax.annotate(
                 "",
-                xy=p2,
-                xytext=p1,
+                xy=tuple(p2),
+                xytext=tuple(p1),
                 arrowprops=dict(
                     arrowstyle="-|>",
                     color=color,
@@ -112,5 +115,124 @@ def plot_trajectory(
                 ),
             )
         ax.legend()
+
+    return ax
+
+
+@validate_call(config=ConfigDict(arbitrary_types_allowed=True))
+def plot_gene_trends(
+    adata: AnnData,
+    track_id: Index_t,
+    gene_names: list[str] | None = None,
+    key_homology: str = SCLOOP_UNS_KEY,
+    ax: Axes | None = None,
+    *,
+    figsize: tuple[PositiveFloat, PositiveFloat] = DEFAULT_FIGSIZE,
+    dpi: PositiveFloat = DEFAULT_DPI,
+    kwargs_figure: dict | None = None,
+    kwargs_axes: dict | None = None,
+    kwargs_layout: dict | None = None,
+    kwargs_plot: dict | None = None,
+    cmap: str = "tab10",
+) -> Axes:
+    data = _get_homology_data(adata, key_homology)
+
+    ax = (
+        _create_figure_standard(
+            figsize=figsize,
+            dpi=dpi,
+            kwargs_figure=kwargs_figure,
+            kwargs_axes=kwargs_axes,
+            kwargs_layout=kwargs_layout,
+        )
+        if ax is None
+        else ax
+    )
+
+    assert data.bootstrap_data is not None
+    track = data.bootstrap_data.loop_tracks[track_id]
+    assert track.hodge_analysis is not None
+    hodge = track.hodge_analysis
+
+    if not hodge.trajectory_analyses:
+        return ax
+
+    trajectory_analyses = hodge.trajectory_analyses
+    all_gene_names = set()
+    for traj_analysis in trajectory_analyses:
+        if traj_analysis.gene_names:
+            all_gene_names.update(traj_analysis.gene_names)
+
+    if gene_names is None:
+        if trajectory_analyses[0].gene_names:
+            gene_names = trajectory_analyses[0].gene_names
+        else:
+            gene_names = list(all_gene_names)
+    else:
+        gene_names = [g for g in gene_names if g in all_gene_names]
+
+    if not gene_names:
+        return ax
+
+    cm = plt.get_cmap(cmap)
+    colors = [cm(i / max(1, len(gene_names) - 1)) for i in range(len(gene_names))]
+
+    for traj_idx, traj_analysis in enumerate(trajectory_analyses):
+        if (
+            traj_analysis.mean_expression is None
+            or traj_analysis.values_vertices is None
+        ):
+            continue
+
+        if traj_analysis.gene_names is None:
+            continue
+
+        for gene_idx, gene_name in enumerate(gene_names):
+            if gene_name not in traj_analysis.gene_names:
+                continue
+
+            gene_pos = traj_analysis.gene_names.index(gene_name)
+            mean_expr = traj_analysis.mean_expression[gene_pos]
+
+            if traj_analysis.trajectory_pseudotime_range is None:
+                continue
+
+            pseudotime_range = traj_analysis.trajectory_pseudotime_range
+            pseudotime = np.linspace(
+                pseudotime_range[0], pseudotime_range[1], len(mean_expr)
+            )
+
+            linestyle = "-" if traj_idx == 0 else "--"
+            label = (
+                f"{gene_name} (path {traj_idx + 1})"
+                if len(trajectory_analyses) > 1
+                else gene_name
+            )
+
+            ax.plot(
+                pseudotime,
+                mean_expr,
+                color=colors[gene_idx],
+                linestyle=linestyle,
+                linewidth=2,
+                label=label,
+                **(kwargs_plot or {}),
+            )
+
+            if (
+                traj_analysis.ci_lower is not None
+                and traj_analysis.ci_upper is not None
+            ):
+                ax.fill_between(
+                    pseudotime,
+                    traj_analysis.ci_lower[gene_pos],
+                    traj_analysis.ci_upper[gene_pos],
+                    color=colors[gene_idx],
+                    alpha=0.2,
+                )
+
+    ax.set_xlabel("Pseudotime")
+    ax.set_ylabel("Gene Expression")
+    ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=8)
 
     return ax

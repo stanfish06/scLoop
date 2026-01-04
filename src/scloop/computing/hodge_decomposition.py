@@ -28,7 +28,7 @@ def run_eigsh_worker(
     try:
         from scipy.sparse.linalg import eigsh
 
-        vals, vecs = eigsh(hodge_matrix, k=k, which="SA", tol=tol, maxiter=maxiter)
+        vals, vecs = eigsh(hodge_matrix, k=k, which="SA", tol=tol, maxiter=maxiter)  # type: ignore[arg-type]
         q.put(("success", (vals, vecs)))
     except Exception as e:
         q.put(("error", e))
@@ -45,9 +45,9 @@ def compute_hodge_matrix(
     bd2_full = boundary_matrix_d1
 
     bd1_bd2 = bd1.dot(bd2_full)
-    if bd1_bd2.count_nonzero() != 0:
+    if bd1_bd2.count_nonzero() != 0:  # type: ignore[attr-defined]
         raise ValueError(
-            f"d1 @ d2 has {bd1_bd2.count_nonzero()} nonzero entries. "
+            f"d1 @ d2 has {bd1_bd2.count_nonzero()} nonzero entries. "  # type: ignore[attr-defined]
             f"Simplex orientation is incorrect."
         )
 
@@ -82,11 +82,11 @@ def compute_hodge_eigendecomposition(
     timeout: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
     maxiter: int | None = DEFAULT_MAXITER_EIGENDECOMPOSITION,
 ) -> tuple[np.ndarray, np.ndarray] | None:
-    if hodge_matrix.shape[0] < 2:
+    if hodge_matrix.shape[0] < 2:  # type: ignore[index]
         logger.warning("hodge_matrix too small for eigendecomposition (shape < 2).")
         return None
 
-    k = min(n_components, hodge_matrix.shape[0] - 2)
+    k = min(n_components, hodge_matrix.shape[0] - 2)  # type: ignore[index]
     if k <= 0:
         logger.warning(f"Not enough dimensions for eigendecomposition (k={k}).")
         return None
