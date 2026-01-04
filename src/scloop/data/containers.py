@@ -456,6 +456,7 @@ class HomologyData:
             timeout_eigendecomposition=timeout_eigendecomposition,
             maxiter_eigendecomposition=maxiter_eigendecomposition,
             kwargs_trajectory=kwargs_trajectory,
+            kwargs_gene_trends=kwargs_gene_trends,
         )
 
     def _compute_loop_representatives(

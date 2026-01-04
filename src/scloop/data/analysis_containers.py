@@ -686,11 +686,15 @@ class HodgeAnalysis(BaseModel):
 
     def _trajectory_identification(
         self,
+        coordinates_vertices: np.ndarray,
+        values_vertices: np.ndarray,
         use_smooth: bool = True,
         percentile_threshold_involvement: Percent_t = 0,
         n_bins: int = 20,
         min_n_bins: int = 4,
         s: float = 0.1,
+        padding_pct: float = 0.2,
+        split_threshold: float = 0.0,
     ):
         from scipy.interpolate import splev, splprep
 
@@ -721,11 +725,60 @@ class HodgeAnalysis(BaseModel):
         mask_edge_involved = inv_all > np.percentile(
             a=inv_all, q=percentile_threshold_involvement * 100
         )
+        vals_involved = vals_all[mask_edge_involved]
+
+        if len(vals_involved) == 0:
+            self.trajectory_analyses = []
+            return
+
+        t_loop_start = float(np.percentile(vals_involved, 5))
+        t_loop_end = float(np.percentile(vals_involved, 95))
+        loop_span = t_loop_end - t_loop_start
+
+        t_global_min = float(np.min(values_vertices))
+        t_global_max = float(np.max(values_vertices))
+
+        t_entry_min = max(t_global_min, t_loop_start - (loop_span * padding_pct))
+        t_exit_max = min(t_global_max, t_loop_end + (loop_span * padding_pct))
+
+        n_bins_stem = max(2, int(n_bins * padding_pct))
+
+        def get_stem_points(t_start, t_end, n_bins_s):
+            if t_end <= t_start:
+                return [], [], []
+
+            bins = np.linspace(t_start, t_end, n_bins_s + 1)
+            stem_centers = []
+            stem_weights = []
+            stem_t = []
+
+            for i in range(n_bins_s):
+                m_bin = (values_vertices >= bins[i]) & (values_vertices < bins[i + 1])
+                if np.any(m_bin):
+                    center = np.mean(coordinates_vertices[m_bin], axis=0)
+                    weight = np.sum(m_bin)
+                    stem_centers.append(center)
+                    stem_weights.append(weight)
+                    stem_t.append((bins[i] + bins[i + 1]) / 2)
+
+            return stem_centers, stem_weights, stem_t
+
+        entry_centers, entry_weights, entry_t = get_stem_points(
+            t_entry_min, t_loop_start, n_bins_stem
+        )
+        exit_centers, exit_weights, exit_t = get_stem_points(
+            t_loop_end, t_exit_max, n_bins_stem
+        )
 
         trajs = []
         traj_analyses = []
         for sign in [1, -1]:
-            mask_arm = mask_edge_involved & (np.sign(emb_all) == sign)
+            if sign == 1:
+                mask_sign = emb_all > split_threshold
+            else:
+                mask_sign = emb_all < -split_threshold
+
+            mask_arm = mask_edge_involved & mask_sign
             if not np.any(mask_arm):
                 continue
 
@@ -734,9 +787,9 @@ class HodgeAnalysis(BaseModel):
             w_arm = inv_all[mask_arm]
 
             bins = np.linspace(v_arm.min(), v_arm.max(), n_bins + 1)
-            bin_centers = []
-            spatial_centers = []
-            bin_weights = []
+            arm_centers = []
+            arm_weights = []
+            arm_t = []
 
             for i in range(n_bins):
                 m_bin = (v_arm >= bins[i]) & (v_arm < bins[i + 1])
@@ -745,23 +798,29 @@ class HodgeAnalysis(BaseModel):
                     total_weight = np.sum(weights_bin) + NUMERIC_EPSILON
                     center = np.average(c_arm[m_bin], axis=0, weights=weights_bin)
 
-                    bin_centers.append((bins[i] + bins[i + 1]) / 2)
-                    spatial_centers.append(center)
-                    bin_weights.append(total_weight)
+                    arm_centers.append(center)
+                    arm_weights.append(total_weight)
+                    arm_t.append((bins[i] + bins[i + 1]) / 2)
 
-            if len(spatial_centers) < min_n_bins:
+            full_centers = entry_centers + arm_centers + exit_centers
+            full_weights = entry_weights + arm_weights + exit_weights
+            full_t = entry_t + arm_t + exit_t
+
+            if len(full_centers) < min_n_bins:
                 continue
 
-            pts = np.array(spatial_centers).T
-            w_pts = np.array(bin_weights)
+            pts = np.array(full_centers).T
+            w_pts = np.array(full_weights)
 
-            idx_sort = np.argsort(bin_centers)
+            idx_sort = np.argsort(full_t)
             pts = pts[:, idx_sort]
             w_pts = w_pts[idx_sort]
             w_pts = w_pts / np.max(w_pts)
 
             try:
-                tck, u = splprep(pts, w=w_pts, s=s)
+                # TODO: how to make it more robust?
+                # tck, u = splprep(pts, w=w_pts, s=s)
+                tck, u = splprep(pts)
                 u_fine = np.linspace(0, 1, n_bins * 10)
                 traj_fine = np.array(splev(u_fine, tck)).T
                 trajs.append(traj_fine)
@@ -771,11 +830,14 @@ class HodgeAnalysis(BaseModel):
                 edge_distances = cdist(c_arm, traj_fine).min(axis=1)
                 bandwidth = float(np.percentile(edge_distances, 75))
 
+                traj_min_t = full_t[idx_sort[0]]
+                traj_max_t = full_t[idx_sort[-1]]
+
                 traj_analysis = TrajectoryAnalysis(
                     trajectory_coordinates=traj_fine,
                     trajectory_pseudotime_range=(
-                        float(v_arm.min()),
-                        float(v_arm.max()),
+                        float(traj_min_t),
+                        float(traj_max_t),
                     ),
                     n_bins=n_bins,
                     bandwidth_vertices=bandwidth,
@@ -788,11 +850,12 @@ class HodgeAnalysis(BaseModel):
 
     def _compute_gene_trends(
         self,
-        coordinates_vertices: np.ndarray | None,
+        coordinates_vertices: np.ndarray,
         gene_expression_matrix: np.ndarray,
         gene_names: list[str],
         values_vertices: np.ndarray,
         confidence_level: float = 0.95,
+        bandwidth_scale: float = 1.0,
         verbose: bool = False,
     ):
         from ..analyzing.gene_trend import compute_gene_trends_for_trajectories
@@ -811,5 +874,6 @@ class HodgeAnalysis(BaseModel):
             gene_names=gene_names,
             values_vertices=values_vertices,
             confidence_level=confidence_level,
+            bandwidth_scale=bandwidth_scale,
             verbose=verbose,
         )

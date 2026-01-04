@@ -206,6 +206,9 @@ def analyze_loops(
     compute_gene_trends: bool = True,
     gene_trend_genes: list[str] | None = None,
     gene_trend_confidence_level: float = 0.95,
+    gene_trend_bandwidth_scale: float = 1.0,
+    trajectory_padding_pct: float = 0.2,
+    trajectory_smoothing: float = 0.1,
     verbose: bool = False,
     max_log_messages: int | None = None,
     timeout_eigendecomposition: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
@@ -247,7 +250,10 @@ def analyze_loops(
 
     kwargs_edge_embedding.setdefault("weight_hodge", weight_hodge)
     kwargs_edge_embedding.setdefault("half_window", half_window)
+    kwargs_trajectory.setdefault("padding_pct", trajectory_padding_pct)
+    kwargs_trajectory.setdefault("s", trajectory_smoothing)
     kwargs_gene_trends.setdefault("confidence_level", gene_trend_confidence_level)
+    kwargs_gene_trends.setdefault("bandwidth_scale", gene_trend_bandwidth_scale)
 
     use_log_display = verbose and max_log_messages is not None
     log_display_ctx = None
@@ -279,14 +285,12 @@ def analyze_loops(
 
         values_vertices = np.array(adata.obs[key_values])
 
-        coordinates_vertices = None
-        if compute_gene_trends:
-            assert adata.uns[SCLOOP_META_UNS_KEY].preprocess is not None
-            coordinates_vertices = np.array(
-                adata.obsm[
-                    f"X_{adata.uns[SCLOOP_META_UNS_KEY].preprocess.embedding_method}"
-                ]
-            )
+        assert adata.uns[SCLOOP_META_UNS_KEY].preprocess is not None
+        coordinates_vertices = np.array(
+            adata.obsm[
+                f"X_{adata.uns[SCLOOP_META_UNS_KEY].preprocess.embedding_method}"
+            ]
+        )
 
         gene_expression_matrix = None
         gene_names = None

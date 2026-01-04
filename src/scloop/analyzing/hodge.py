@@ -55,6 +55,7 @@ def compute_hodge_analysis(
     timeout_eigendecomposition: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
     maxiter_eigendecomposition: int | None = DEFAULT_MAXITER_EIGENDECOMPOSITION,
     kwargs_trajectory: dict[str, Any] | None = None,
+    kwargs_gene_trends: dict[str, Any] | None = None,
 ) -> None:
     assert idx_track in bootstrap_data.loop_tracks
     track = bootstrap_data.loop_tracks[idx_track]
@@ -176,15 +177,24 @@ def compute_hodge_analysis(
         if progress is not None and task_step is not None:
             progress.update(task_step, description="Identify trajectories...")
         kwargs_trajectory = kwargs_trajectory or {}
-        track.hodge_analysis._trajectory_identification(
-            use_smooth=kwargs_trajectory.get("use_smooth", True),
-            percentile_threshold_involvement=kwargs_trajectory.get(
-                "percentile_threshold_involvement", 0
-            ),
-            n_bins=kwargs_trajectory.get("n_bins", 20),
-            min_n_bins=kwargs_trajectory.get("min_n_bins", 4),
-            s=kwargs_trajectory.get("s", 0.1),
-        )
+        if coordinates_vertices is None:
+            logger.warning(
+                "coordinates_vertices is None. Trajectory identification skipped."
+            )
+        else:
+            track.hodge_analysis._trajectory_identification(
+                coordinates_vertices=coordinates_vertices,
+                values_vertices=values_vertices,
+                use_smooth=kwargs_trajectory.get("use_smooth", True),
+                percentile_threshold_involvement=kwargs_trajectory.get(
+                    "percentile_threshold_involvement", 0
+                ),
+                n_bins=kwargs_trajectory.get("n_bins", 20),
+                min_n_bins=kwargs_trajectory.get("min_n_bins", 4),
+                s=kwargs_trajectory.get("s", 0.1),
+                padding_pct=kwargs_trajectory.get("padding_pct", 0.2),
+                split_threshold=kwargs_trajectory.get("split_threshold", 0.0),
+            )
     except Exception as e:
         logger.warning(f"Trajectory identification failed: {e}")
 
@@ -199,12 +209,14 @@ def compute_hodge_analysis(
             if verbose:
                 logger.info("Computing gene trends along trajectories")
 
+            kwargs_gene_trends = kwargs_gene_trends or {}
             track.hodge_analysis._compute_gene_trends(
                 coordinates_vertices=coordinates_vertices,
                 gene_expression_matrix=gene_expression_matrix,
                 gene_names=gene_names,
                 values_vertices=values_vertices,
                 confidence_level=gene_trend_confidence_level,
+                bandwidth_scale=kwargs_gene_trends.get("bandwidth_scale", 1.0),
                 verbose=verbose,
             )
         except Exception as e:

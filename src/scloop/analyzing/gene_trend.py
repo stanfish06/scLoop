@@ -24,6 +24,7 @@ def compute_gene_trends_for_trajectories(
     gene_names: list[str],
     values_vertices: np.ndarray,
     confidence_level: float = 0.95,
+    bandwidth_scale: float = 1.0,
     verbose: bool = False,
 ) -> None:
     for traj in trajectory_analyses:
@@ -32,11 +33,15 @@ def compute_gene_trends_for_trajectories(
                 f"Computing gene trends for trajectory with {len(traj.trajectory_coordinates)} points"
             )
 
+        bw = traj.bandwidth_vertices
+        if bw is not None:
+            bw *= bandwidth_scale
+
         weights, pseudotime, distances = compute_vertices_weights_for_trajectory(
             trajectory_coords=traj.trajectory_coordinates,
             coordinates_vertices=coordinates_vertices,
             values_vertices=values_vertices,
-            bandwidth=traj.bandwidth_vertices,
+            bandwidth=bw,
         )
 
         traj.weights_vertices = weights

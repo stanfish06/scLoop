@@ -127,6 +127,7 @@ def plot_gene_trends(
     key_homology: str = SCLOOP_UNS_KEY,
     ax: Axes | None = None,
     *,
+    clip_range: tuple[float, float] = (0, 100),
     figsize: tuple[PositiveFloat, PositiveFloat] = DEFAULT_FIGSIZE,
     dpi: PositiveFloat = DEFAULT_DPI,
     kwargs_figure: dict | None = None,
@@ -135,6 +136,18 @@ def plot_gene_trends(
     kwargs_plot: dict | None = None,
     cmap: str = "tab10",
 ) -> Axes:
+    from matplotlib.colors import ListedColormap
+
+    from .custom_colormaps import dye, earth, gem12, meadow, reef
+
+    custom_cmaps = {
+        "gem12": gem12,
+        "reef": reef,
+        "meadow": meadow,
+        "dye": dye,
+        "earth": earth,
+    }
+
     data = _get_homology_data(adata, key_homology)
 
     ax = (
@@ -174,8 +187,12 @@ def plot_gene_trends(
     if not gene_names:
         return ax
 
-    cm = plt.get_cmap(cmap)
-    colors = [cm(i / max(1, len(gene_names) - 1)) for i in range(len(gene_names))]
+    if cmap in custom_cmaps:
+        cm = ListedColormap(custom_cmaps[cmap])
+        colors = [cm(i % cm.N) for i in range(len(gene_names))]
+    else:
+        cm = plt.get_cmap(cmap)
+        colors = [cm(i / max(1, len(gene_names) - 1)) for i in range(len(gene_names))]
 
     for traj_idx, traj_analysis in enumerate(trajectory_analyses):
         if (
@@ -202,6 +219,17 @@ def plot_gene_trends(
                 pseudotime_range[0], pseudotime_range[1], len(mean_expr)
             )
 
+            start_idx = int(clip_range[0] * len(mean_expr) / 100)
+            end_idx = int(clip_range[1] * len(mean_expr) / 100)
+            start_idx = max(0, start_idx)
+            end_idx = min(len(mean_expr), end_idx)
+
+            if start_idx >= end_idx:
+                continue
+
+            pseudotime_clipped = pseudotime[start_idx:end_idx]
+            mean_expr_clipped = mean_expr[start_idx:end_idx]
+
             linestyle = "-" if traj_idx == 0 else "--"
             label = (
                 f"{gene_name} (path {traj_idx + 1})"
@@ -210,8 +238,8 @@ def plot_gene_trends(
             )
 
             ax.plot(
-                pseudotime,
-                mean_expr,
+                pseudotime_clipped,
+                mean_expr_clipped,
                 color=colors[gene_idx],
                 linestyle=linestyle,
                 linewidth=2,
@@ -223,10 +251,12 @@ def plot_gene_trends(
                 traj_analysis.ci_lower is not None
                 and traj_analysis.ci_upper is not None
             ):
+                ci_lower = traj_analysis.ci_lower[gene_pos][start_idx:end_idx]
+                ci_upper = traj_analysis.ci_upper[gene_pos][start_idx:end_idx]
                 ax.fill_between(
-                    pseudotime,
-                    traj_analysis.ci_lower[gene_pos],
-                    traj_analysis.ci_upper[gene_pos],
+                    pseudotime_clipped,
+                    ci_lower,
+                    ci_upper,
                     color=colors[gene_idx],
                     alpha=0.2,
                 )
