@@ -64,7 +64,6 @@ src/scloop/
 ├── computing
 │   ├── boundary.py
 │   ├── hodge_decomposition.py
-│   ├── hodge.py
 │   ├── homology.py
 │   ├── __init__.py
 │   ├── loops.py
@@ -84,6 +83,8 @@ src/scloop/
 │   ├── types.py
 │   └── utils.py
 ├── __init__.py
+├── io
+│   └── __init__.py
 ├── matching
 │   ├── cross_dataset.py
 │   ├── data_modules.py
@@ -92,9 +93,11 @@ src/scloop/
 │   └── nf.py
 ├── plotting
 │   ├── _cross_match.py
+│   ├── custom_colormaps.py
 │   ├── _hodge.py
 │   ├── _homology.py
 │   ├── __init__.py
+│   ├── _trajectory.py
 │   └── _utils.py
 ├── preprocessing
 │   ├── delve
