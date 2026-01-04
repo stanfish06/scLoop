@@ -2711,7 +2711,7 @@ wheels = [
 
 [[package]]
 name = "scloop"
-version = "0.1.15"
+version = "0.1.16"
 source = { editable = "." }
 dependencies = [
     { name = "cython" },
@@ -2759,7 +2759,7 @@ requires-dist = [
     { name = "pandas" },
     { name = "pip", specifier = ">=25.2" },
     { name = "pydantic", specifier = ">=2.11.4" },
-    { name = "pygam", specifier = ">=0.12.0" },
+    { name = "pygam", specifier = ">=0.12" },
     { name = "pynndescent", specifier = ">=0.5.13" },
     { name = "pytest", specifier = ">=8.4" },
     { name = "rich", specifier = "==14.2" },
