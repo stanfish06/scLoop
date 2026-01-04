@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
 import numpy as np
 from anndata import AnnData
@@ -402,25 +403,33 @@ class HomologyData:
         self,
         idx_track: Index_t,  # TODO: potentially allow multiple tracks and parallelize them
         values_vertices: np.ndarray,
-        coordinates_vertices: np.ndarray,
+        coordinates_vertices: np.ndarray | None = None,
         life_pct: Percent_t | None = None,
         n_hodge_components: int = DEFAULT_N_HODGE_COMPONENTS,
         normalized: bool = True,
         n_neighbors_edge_embedding: Count_t = DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
-        weight_hodge: Percent_t = DEFAULT_WEIGHT_HODGE,
-        half_window: int = DEFAULT_HALF_WINDOW,
         compute_gene_trends: bool = True,
-        gene_expression_matrix: np.ndarray | None = None,
+        gene_expression_matrix: Any | None = None,
         gene_names: list[str] | None = None,
-        gene_trend_confidence_level: float = 0.95,
         verbose: bool = False,
         progress: Progress | None = None,
         timeout_eigendecomposition: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
         maxiter_eigendecomposition: int | None = DEFAULT_MAXITER_EIGENDECOMPOSITION,
+        kwargs_edge_embedding: dict[str, Any] | None = None,
+        kwargs_trajectory: dict[str, Any] | None = None,
+        kwargs_gene_trends: dict[str, Any] | None = None,
     ) -> None:
         assert self.bootstrap_data is not None
         assert self.boundary_matrix_d0 is not None
         assert self.boundary_matrix_d1 is not None
+
+        kwargs_edge_embedding = kwargs_edge_embedding or {}
+        kwargs_trajectory = kwargs_trajectory or {}
+        kwargs_gene_trends = kwargs_gene_trends or {}
+
+        weight_hodge = kwargs_edge_embedding.get("weight_hodge", DEFAULT_WEIGHT_HODGE)
+        half_window = kwargs_edge_embedding.get("half_window", DEFAULT_HALF_WINDOW)
+        gene_trend_confidence_level = kwargs_gene_trends.get("confidence_level", 0.95)
 
         compute_hodge_analysis(
             idx_track=idx_track,
@@ -446,6 +455,7 @@ class HomologyData:
             progress=progress,
             timeout_eigendecomposition=timeout_eigendecomposition,
             maxiter_eigendecomposition=maxiter_eigendecomposition,
+            kwargs_trajectory=kwargs_trajectory,
         )
 
     def _compute_loop_representatives(

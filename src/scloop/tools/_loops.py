@@ -50,23 +50,22 @@ def _get_scloop_meta(adata: AnnData) -> ScloopMeta:
 
 def find_loops(
     adata: AnnData,
+    *,
     threshold_homology: PositiveFloat | None = None,
+    threshold_boundary: PositiveFloat | None = None,
     tightness_loops: Percent_t = 0,
     n_candidates: NonZeroCount_t = 1,
     n_bootstrap: Size_t = DEFAULT_N_BOOTSTRAP,
     n_check_per_candidate: NonZeroCount_t = 1,
-    n_max_workers: NonZeroCount_t = DEFAULT_N_MAX_WORKERS,
-    verbose: bool = False,
-    max_log_messages: int | None = None,
-    use_parallel: bool = False,
-    kwargs_bootstrap: dict | None = None,
-    kwargs_loop_test: dict | None = None,
-    *,
-    threshold_boundary: PositiveFloat | None = None,
     max_columns_boundary_matrix: NonZeroCount_t = DEFAULT_MAX_COLUMNS_BOUNDARY_MATRIX,
     auto_shrink_boundary_matrix: bool = True,
     auto_shrink_factor: Percent_t = 0.9,
-    **kwargs,
+    n_max_workers: NonZeroCount_t = DEFAULT_N_MAX_WORKERS,
+    use_parallel: bool = False,
+    verbose: bool = False,
+    max_log_messages: int | None = None,
+    kwargs_bootstrap: dict[str, Any] | None = None,
+    kwargs_loop_test: dict[str, Any] | None = None,
 ) -> None:
     use_log_display = verbose and max_log_messages is not None
     log_display_ctx = None
@@ -74,6 +73,7 @@ def find_loops(
     console = Console()
 
     if use_log_display:
+        assert max_log_messages is not None
         progress_main = Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -194,20 +194,25 @@ def find_loops(
 def analyze_loops(
     adata: AnnData,
     track_ids: list[Index_t] | None = None,
+    *,
     key_values: str = "dpt_pseudotime",
     n_hodge_components: Annotated[int, Field(ge=1)] = DEFAULT_N_HODGE_COMPONENTS,
+    normalized: bool = True,
     n_neighbors_edge_embedding: Annotated[
         int, Field(ge=1)
     ] = DEFAULT_N_NEIGHBORS_EDGE_EMBEDDING,
-    normalized: bool = True,
+    weight_hodge: float = 0.5,
+    half_window: int = 2,
+    compute_gene_trends: bool = True,
+    gene_trend_genes: list[str] | None = None,
+    gene_trend_confidence_level: float = 0.95,
     verbose: bool = False,
     max_log_messages: int | None = None,
     timeout_eigendecomposition: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
     maxiter_eigendecomposition: int | None = DEFAULT_MAXITER_EIGENDECOMPOSITION,
-    compute_gene_trends: bool = True,
-    gene_trend_genes: list[str] | None = None,
-    gene_trend_confidence_level: float = 0.95,
-    **kwargs_loop_analysis: Any,
+    kwargs_edge_embedding: dict[str, Any] | None = None,
+    kwargs_trajectory: dict[str, Any] | None = None,
+    kwargs_gene_trends: dict[str, Any] | None = None,
 ) -> None:
     """Analyze loops using Hodge decomposition and edge embedding.
 
@@ -236,12 +241,21 @@ def analyze_loops(
         - half_window : int (default 2)
             Half window size for along-loop smoothing. 0 disables smoothing.
     """
+    kwargs_edge_embedding = kwargs_edge_embedding or {}
+    kwargs_trajectory = kwargs_trajectory or {}
+    kwargs_gene_trends = kwargs_gene_trends or {}
+
+    kwargs_edge_embedding.setdefault("weight_hodge", weight_hodge)
+    kwargs_edge_embedding.setdefault("half_window", half_window)
+    kwargs_gene_trends.setdefault("confidence_level", gene_trend_confidence_level)
+
     use_log_display = verbose and max_log_messages is not None
     log_display_ctx = None
     progress = None
     console = Console()
 
     if use_log_display:
+        assert max_log_messages is not None
         progress = Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -285,7 +299,7 @@ def analyze_loops(
                 gene_names = adata.var_names.tolist()
 
             X = adata_genes.X
-            gene_expression_matrix = X.toarray() if hasattr(X, "toarray") else X
+            gene_expression_matrix = X.toarray() if hasattr(X, "toarray") else X  # type: ignore[union-attr]
 
         hd: HomologyData = adata.uns[SCLOOP_UNS_KEY]
 
@@ -307,6 +321,7 @@ def analyze_loops(
                 TimeElapsedColumn(),
             )
 
+        assert progress is not None
         with progress:
             task_main = progress.add_task("Analyzing loops...", total=len(track_ids))
 
@@ -331,8 +346,9 @@ def analyze_loops(
                     compute_gene_trends=compute_gene_trends,
                     gene_expression_matrix=gene_expression_matrix,
                     gene_names=gene_names,
-                    gene_trend_confidence_level=gene_trend_confidence_level,
-                    **kwargs_loop_analysis,
+                    kwargs_edge_embedding=kwargs_edge_embedding,
+                    kwargs_trajectory=kwargs_trajectory,
+                    kwargs_gene_trends=kwargs_gene_trends,
                 )
                 progress.advance(task_main)
 

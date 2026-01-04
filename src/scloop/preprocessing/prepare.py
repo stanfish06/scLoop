@@ -1,4 +1,6 @@
 # Copyright 2025 Zhiyuan Yu (Heemskerk's lab, University of Michigan)
+from typing import Any
+
 import numpy as np
 import scanpy as sc
 from anndata import AnnData
@@ -14,12 +16,9 @@ from ..data.constants import (
 )
 from ..data.metadata import PreprocessMeta, ScloopMeta
 from ..data.types import (
-    Count_t,
     EmbeddingMethod,
     EmbeddingNeighbors,
     FeatureSelectionMethod,
-    NonZeroCount_t,
-    Percent_t,
 )
 from ..utils.logging import LogDisplay
 from .downsample import sample
@@ -69,7 +68,7 @@ def _normalize_and_select_hvg(
                 logger.info("adata already normalized (log1p), skipping normalization")
         else:
             X = adata.X
-            values = X.data if hasattr(X, "data") else X
+            values = X.data if hasattr(X, "data") else X  # type: ignore[union-attr]
             if not np.all(np.equal(np.mod(np.asarray(values), 1), 0)):
                 raise ValueError(
                     "adata.X contains non integer values, check if it is library normalized"
@@ -77,7 +76,7 @@ def _normalize_and_select_hvg(
             if not counts_available and not done_norm:
                 if verbose:
                     logger.info("Copying X to counts layer before normalization")
-                adata.layers["counts"] = adata.X.copy()
+                adata.layers["counts"] = adata.X.copy()  # type: ignore[union-attr]
                 counts_available = True
             if verbose:
                 logger.info(
@@ -122,6 +121,7 @@ def _normalize_and_select_hvg(
 @validate_call(config={"arbitrary_types_allowed": True})
 def prepare_adata(
     adata: AnnData,
+    *,
     library_normalization: bool = True,
     target_sum: float = 1e4,
     feature_selection_method: FeatureSelectionMethod = "hvg",
@@ -129,21 +129,19 @@ def prepare_adata(
     n_top_genes: int = 2000,
     embedding_method: EmbeddingMethod = "diffmap",
     embedding_neighbors: EmbeddingNeighbors = "pca",
-    scale_before_pca=False,
     n_pca_comps: int = 100,
     n_neighbors: int = 25,
     n_diffusion_comps: int = 25,
     scvi_key: str = DEFAULT_SCVI_KEY,
     downsample: bool = True,
     n_downsample: int = 1000,
-    percent_removal_density: Percent_t = 0,
-    n_neighbors_removal_density: Count_t = 50,
-    embedding_downsample: EmbeddingMethod | None = None,
     groupby_downsample: str | None = None,
     random_state_downsample: int = 0,
     verbose: bool = True,
     copy: bool = False,
-    max_log_messages: NonZeroCount_t | None = None,
+    max_log_messages: int | None = None,
+    kwargs_pca: dict[str, Any] | None = None,
+    kwargs_downsample: dict[str, Any] | None = None,
 ):
     """
     prepare_adata(adata, n_comps, n_neighbors, use_highly_variable, compute_diffmap, n_dcs)
@@ -164,10 +162,21 @@ def prepare_adata(
     """
     adata = adata.copy() if copy else adata
 
-    use_log_display = verbose and max_log_messages is not None
-    log_display_ctx = LogDisplay(maxlen=max_log_messages) if use_log_display else None
+    kwargs_pca = kwargs_pca or {}
+    kwargs_downsample = kwargs_downsample or {}
 
+    scale_before_pca = kwargs_pca.get("scale_before_pca", False)
+    percent_removal_density = kwargs_downsample.get("percent_removal_density", 0)
+    n_neighbors_removal_density = kwargs_downsample.get(
+        "n_neighbors_removal_density", 50
+    )
+    embedding_downsample = kwargs_downsample.get("embedding_downsample", None)
+
+    use_log_display = verbose and max_log_messages is not None
+    log_display_ctx: LogDisplay | None = None
     if use_log_display:
+        assert max_log_messages is not None
+        log_display_ctx = LogDisplay(maxlen=max_log_messages)
         log_display_ctx.__enter__()
         logger.info(
             f"Preparing AnnData with {adata.n_obs} cells and {adata.n_vars} genes"

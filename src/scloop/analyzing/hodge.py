@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import numpy as np
 from loguru import logger
@@ -38,7 +39,7 @@ def compute_hodge_analysis(
     boundary_matrix_d1: BoundaryMatrixD1,
     meta: ScloopMeta,
     values_vertices: np.ndarray,
-    coordinates_vertices: np.ndarray,
+    coordinates_vertices: np.ndarray | None = None,
     life_pct: Percent_t | None = None,
     n_hodge_components: int = DEFAULT_N_HODGE_COMPONENTS,
     normalized: bool = True,
@@ -46,13 +47,14 @@ def compute_hodge_analysis(
     weight_hodge: Percent_t = DEFAULT_WEIGHT_HODGE,
     half_window: int = DEFAULT_HALF_WINDOW,
     compute_gene_trends: bool = True,
-    gene_expression_matrix: np.ndarray | None = None,
+    gene_expression_matrix: Any | None = None,
     gene_names: list[str] | None = None,
     gene_trend_confidence_level: float = 0.95,
     verbose: bool = False,
     progress: Progress | None = None,
     timeout_eigendecomposition: float = DEFAULT_TIMEOUT_EIGENDECOMPOSITION,
     maxiter_eigendecomposition: int | None = DEFAULT_MAXITER_EIGENDECOMPOSITION,
+    kwargs_trajectory: dict[str, Any] | None = None,
 ) -> None:
     assert idx_track in bootstrap_data.loop_tracks
     track = bootstrap_data.loop_tracks[idx_track]
@@ -173,7 +175,16 @@ def compute_hodge_analysis(
     try:
         if progress is not None and task_step is not None:
             progress.update(task_step, description="Identify trajectories...")
-        track.hodge_analysis._trajectory_identification()
+        kwargs_trajectory = kwargs_trajectory or {}
+        track.hodge_analysis._trajectory_identification(
+            use_smooth=kwargs_trajectory.get("use_smooth", True),
+            percentile_threshold_involvement=kwargs_trajectory.get(
+                "percentile_threshold_involvement", 0
+            ),
+            n_bins=kwargs_trajectory.get("n_bins", 20),
+            min_n_bins=kwargs_trajectory.get("min_n_bins", 4),
+            s=kwargs_trajectory.get("s", 0.1),
+        )
     except Exception as e:
         logger.warning(f"Trajectory identification failed: {e}")
 

@@ -788,7 +788,7 @@ class HodgeAnalysis(BaseModel):
 
     def _compute_gene_trends(
         self,
-        coordinates_vertices: np.ndarray,
+        coordinates_vertices: np.ndarray | None,
         gene_expression_matrix: np.ndarray,
         gene_names: list[str],
         values_vertices: np.ndarray,
