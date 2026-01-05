@@ -57,8 +57,8 @@ jobs:
               MSYS2_PATH_TYPE=inherit
               CC=x86_64-w64-mingw32-gcc
               CXX=x86_64-w64-mingw32-g++
-              CFLAGS="-O3 -fopenmp"
-              LDFLAGS="-fopenmp"
+              CFLAGS="-O3 -I{project}/src/scloop/utils/linear_algebra_gf2/include"
+              LDFLAGS="-L{project}/src/scloop/utils/linear_algebra_gf2"
             config_settings_windows: >
               --global-option=build_ext --global-option=--compiler=mingw32
 

@@ -1,4 +1,5 @@
 import os
+import sys
 
 from Cython.Build import cythonize
 from setuptools import Extension, setup
@@ -6,6 +7,14 @@ from setuptools import Extension, setup
 project_root = os.path.dirname(os.path.abspath(__file__))
 gf2_dir = os.path.join(project_root, "src/scloop/utils/linear_algebra_gf2")
 gf2toolkit_srcs = os.path.join(gf2_dir, "GF2toolkit/srcs")
+
+is_windows = sys.platform.startswith("win")
+if is_windows:
+    openmp_compile = ["-fopenmp"]
+    openmp_link = ["-fopenmp", "-static"]
+else:
+    openmp_compile = ["-fopenmp"]
+    openmp_link = ["-fopenmp"]
 
 extensions = [
     Extension(
@@ -19,8 +28,8 @@ extensions = [
         sources=["./src/scloop/utils/linear_algebra_gf2/m4ri_lib.pyx"],
         include_dirs=[os.path.join(gf2_dir, "include")],
         extra_objects=[os.path.join(gf2_dir, "libm4ri.a")],
-        extra_compile_args=["-fopenmp"],
-        extra_link_args=["-fopenmp"],
+        extra_compile_args=openmp_compile,
+        extra_link_args=openmp_link,
     ),
     # Extension(
     #     "scloop.utils.linear_algebra_gf2.gf2toolkit_lib",
