@@ -10,9 +10,9 @@ gf2toolkit_srcs = os.path.join(gf2_dir, "GF2toolkit/srcs")
 
 is_windows = sys.platform.startswith("win")
 if is_windows:
-    base_link_args = ["-static-libgcc", "-static-libstdc++"]
+    base_link_args = ["-static-libgcc", "-static-libstdc++", "-Wl,-Bstatic", "-lpthread", "-Wl,-Bdynamic"]
     openmp_compile = ["-fopenmp"]
-    openmp_link = base_link_args + ["-fopenmp", "-static"]
+    openmp_link = base_link_args + ["-fopenmp", "-Wl,-Bstatic", "-lgomp", "-Wl,-Bdynamic"]
 else:
     base_link_args = []
     openmp_compile = ["-fopenmp"]
